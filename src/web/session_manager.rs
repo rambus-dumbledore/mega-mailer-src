@@ -9,6 +9,7 @@ use rocket::{Request, State};
 
 use crate::storage::{User, Storage};
 use crate::types::*;
+use crate::cfg::CONFIG;
 
 const COOKIE_NAME: &str = "mega_mailer_secret";
 
@@ -19,7 +20,7 @@ pub struct SessionKeystore {
 impl SessionKeystore {
     pub fn new() -> SessionKeystore {
         SessionKeystore {
-            key: Hmac::new_varkey(b"qwertyasdfghzxcvbn").unwrap()
+            key: Hmac::new_varkey(CONFIG.get::<String>("web.cookie_key").as_bytes()).unwrap()
         }
     }
 }

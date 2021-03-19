@@ -6,6 +6,7 @@ use redis::{FromRedisValue, ToRedisArgs, Commands};
 use crate::types::{Result};
 use crate::storage::{User, LoginRequest, AttachRequest, MailAccount};
 use crate::storage::mail_account::MailAccountEncrypted;
+use crate::cfg::CONFIG;
 
 #[derive(Clone)]
 pub struct Storage {
@@ -14,7 +15,7 @@ pub struct Storage {
 
 impl Storage {
     pub fn new() -> Storage {
-        let client = redis::Client::open("redis://192.168.10.13:36379").unwrap();
+        let client = redis::Client::open(format!("redis://{}", CONFIG.get::<String>("storage.redis"))).unwrap();
         Storage {
             client
         }

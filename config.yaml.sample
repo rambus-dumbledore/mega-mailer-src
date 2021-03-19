@@ -1,6 +1,7 @@
 debug: true
 
 storage:
+  redis: '127.0.0.1:6379'
   key: ''
   iv: ''
 
@@ -8,6 +9,7 @@ web:
   address: '127.0.0.1'
   port: 8000
   static_path: ''
+  cookie_key: ''
 
 bot:
   secret: ''

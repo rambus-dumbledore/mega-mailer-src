@@ -1,6 +1,6 @@
 use config::{Config, File, Environment};
 use lazy_static::lazy_static;
-use log::{info, error};
+use log::{trace, error};
 use serde::Deserialize;
 use std::fmt::Display;
 
@@ -16,10 +16,10 @@ impl Cfg {
     pub fn get_or_default<'de, T>(&self, key: &str, default: Option<T>) -> T
     where T: Display + Deserialize<'de>
     {
-        info!(target: "Config", "trying access to config with key \"{}\"", key);
+        trace!(target: "Config", "trying access to config with key \"{}\"", key);
         let res = self.0.get::<T>(key);
         if let Ok(value) = res {
-            info!(target: "Config", "value \"{}\" with key \"{}\" was get successfully", value, key);
+            trace!(target: "Config", "value \"{}\" with key \"{}\" was get successfully", value, key);
             return value;
         } else {
             let err = res.err().unwrap();
@@ -27,7 +27,7 @@ impl Cfg {
             error!(target: "Config", "{}", err);
         }
         if let Some(value) = default {
-            info!(target: "Config", "using default value \"{}\" for key \"{}\"", value, key);
+            trace!(target: "Config", "using default value \"{}\" for key \"{}\"", value, key);
             return value;
         }
         panic!("x_x too baaaad");
