@@ -25,6 +25,7 @@ regex = "1.4"
 lazy_static = "1.4"
 block-modes = "0.7"
 aes = "0.6"
+thiserror = "1.0"
 
 [[bin]]
 name = "mega_mailer"

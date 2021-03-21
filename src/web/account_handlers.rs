@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Serialize, Deserialize};
 use rocket::{State, get, post, routes, Route};
 use crate::storage::{User, Storage, MailAccount};
 use rocket_contrib::json::Json;
@@ -15,9 +15,15 @@ struct SetAccountParams {
     pub password: String
 }
 
+#[derive(Serialize)]
+struct SetAccountResponse {
+    changed: bool,
+}
+
 #[post("/account", data = "<params>")]
-fn set_account_settings(user: User, params: Json<SetAccountParams>, storage: State<Storage>) {
-    storage.set_mail_account(&user.user_name, &params.email, &params.password);
+fn set_account_settings(user: User, params: Json<SetAccountParams>, storage: State<Storage>) -> Result<Json<SetAccountResponse>> {
+    let changed = storage.set_mail_account(&user.user_name, &params.email, &params.password)?;
+    Ok(Json(SetAccountResponse{ changed }))
 }
 
 pub fn account_routes() -> Vec<Route> {

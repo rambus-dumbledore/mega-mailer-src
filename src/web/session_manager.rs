@@ -42,13 +42,13 @@ impl SessionManager<'_> {
 
     pub fn authenticate(&mut self, user_name: &String, code: &String) -> Result<()> {
         let telegram_id = self.storage.get_telegram_id(user_name);
-        if telegram_id.is_none() {
-            return Err(Box::new(UserNotRegisteredError));
+        if telegram_id.is_err() {
+            return Err(Error::AuthorizationError(AuthError::UserNotRegistered));
         }
 
         let login_request = self.storage.get_login_request(code);
         if login_request.is_none() {
-            return Err(Box::new(AuthCodeInvalidError))
+            return Err(Error::AuthorizationError(AuthError::AuthCodeInvalid))
         }
 
         let mut claims = BTreeMap::new();

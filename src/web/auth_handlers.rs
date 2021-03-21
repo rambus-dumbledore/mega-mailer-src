@@ -5,6 +5,7 @@ use crate::web::session_manager::{SessionManager};
 use rocket_contrib::json::Json;
 use serde_json::json;
 use crate::bot::TelegramBot;
+use crate::types::Result;
 
 #[derive(Deserialize)]
 struct LoginParams {
@@ -13,8 +14,8 @@ struct LoginParams {
 }
 
 #[post("/login", data = "<params>")]
-fn login(mut sm: SessionManager<'_>, params: Json<LoginParams>) {
-    sm.authenticate(&params.username, &params.code).unwrap()
+fn login(mut sm: SessionManager<'_>, params: Json<LoginParams>) -> Result<()> {
+    sm.authenticate(&params.username, &params.code)
 }
 
 #[derive(Deserialize)]
@@ -24,7 +25,7 @@ struct CodeParams {
 
 #[post("/login_code", data = "<params>")]
 async fn login_code(storage: State<'_, Storage>, bot: State<'_, TelegramBot>, params: Json<CodeParams>) {
-    if let Some(id) = storage.get_telegram_id(&params.username) {
+    if let Ok(id) = storage.get_telegram_id(&params.username) {
         bot.send_login_code(id, &params.username).await;
     }
 }
@@ -35,10 +36,11 @@ struct AttachCodeParams {
 }
 
 #[post("/attach_code", data = "<params>")]
-fn attach_code(storage: State<'_, Storage>, params: Json<AttachCodeParams>) -> String {
-    json!({
-        "code": storage.create_attach_request(&params.username)
-    }).to_string()
+fn attach_code(storage: State<'_, Storage>, params: Json<AttachCodeParams>) -> Result<String> {
+    let code = storage.create_attach_request(&params.username)?;
+    Ok(json!({
+        "code": code
+    }).to_string())
 }
 
 #[get("/whoami")]

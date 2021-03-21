@@ -2,8 +2,9 @@ use serde_cbor;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use redis::{FromRedisValue, ToRedisArgs, Commands};
+use log::{error};
 
-use crate::types::{Result};
+use crate::types::{Result, Error};
 use crate::storage::{User, LoginRequest, AttachRequest, MailAccount};
 use crate::storage::mail_account::MailAccountEncrypted;
 use crate::cfg::CONFIG;
@@ -14,11 +15,11 @@ pub struct Storage {
 }
 
 impl Storage {
-    pub fn new() -> Storage {
-        let client = redis::Client::open(format!("redis://{}", CONFIG.get::<String>("storage.redis"))).unwrap();
-        Storage {
+    pub fn new() -> Result<Storage> {
+        let client = redis::Client::open(format!("redis://{}", CONFIG.get::<String>("storage.redis")))?;
+        Ok(Storage {
             client
-        }
+        })
     }
 }
 
@@ -38,42 +39,36 @@ impl Storage {
         conn.del(key.as_str())
     }
 
-    fn set<T: ToRedisArgs>(&self, key: &String, value: T) -> Result<()> {
-        let res: redis::RedisResult<()> = self.set_impl(key, value);
-        if let Ok(res) = res {
-            return Ok(res);
-        }
-        let err = res.unwrap_err();
-        Err(Box::new(err))
+    fn set<T: ToRedisArgs>(&self, key: &String, value: T) -> Result<bool> {
+        let res = self.set_impl(key, value);
+        res.map_err(|e| {
+            Error::StorageError(e)
+        })
     }
 
-    fn get<T: FromRedisValue>(&self, key: &String) -> Option<T> {
-        let res: redis::RedisResult<T> = self.get_impl(key);
-
-        if res.is_ok() {
-            return Some(res.unwrap())
-        }
-        println!("{}", res.err().unwrap());
-        None
+    fn get<T: FromRedisValue>(&self, key: &String) -> Result<T> {
+        self.get_impl::<T>(key).map_err(|e|{
+            Error::from(e)
+        })
     }
 
-    fn set_bin<T: Serialize>(&self, key: &String, value: &T) -> Result<()> {
-        let data = serde_cbor::to_vec(value).unwrap();
+    fn set_bin<T: Serialize>(&self, key: &String, value: &T) -> Result<bool> {
+        let data = serde_cbor::to_vec(value)?;
         self.set(key, data)
     }
 
     fn get_bin<T>(&self, key: &String) -> Option<T>
         where T: DeserializeOwned
     {
-        let data = self.get::<Vec<u8>>(&key);
-        if let Some(data) = data {
-            let item = serde_cbor::from_slice::<T>(data.as_slice());
-            if let Ok(item) = item {
-                return Some(item);
-            }
+        let data = self.get::<Vec<u8>>(&key).ok()?;
 
+        match serde_cbor::from_slice::<T>(data.as_slice()) {
+            Ok(data) => Some(data),
+            Err(e) => {
+                error!("Deserialization error: {}", e);
+                None
+            }
         }
-        None
     }
 
     fn del(&self, key: &String) -> Result<()> {
@@ -83,13 +78,13 @@ impl Storage {
             return Ok(());
         }
 
-        Err(Box::new(res.unwrap_err()))
+        Err(Error::StorageError(res.unwrap_err()))
     }
 
     pub fn get_session(&self, username: &String) -> Option<User> {
         let key = format!("SESSION:{}", username);
-        let data: Option<Vec<u8>> = self.get(&key);
-        if let Some(data) = data {
+        let data = self.get::<Vec<u8>>(&key);
+        if let Ok(data) = data {
             return serde_cbor::from_slice(data.as_slice()).unwrap() // TODO
         }
         None
@@ -106,7 +101,7 @@ impl Storage {
         self.del(&key).unwrap()
     }
 
-    pub fn get_telegram_id(&self, username: &String) -> Option<String> {
+    pub fn get_telegram_id(&self, username: &String) -> Result<String> {
         let key = format!("TELEGRAM_ID:{}", username);
         self.get::<String>(&key)
     }
@@ -126,41 +121,74 @@ impl Storage {
     pub fn get_login_request(&self, code: &String) -> Option<LoginRequest> {
         let key = format!("LOGIN:{}", code);
         let data = self.get::<Vec<u8>>(&key);
-        self.del(&key).unwrap();
-        if let Some(data) = data {
-            let request = serde_cbor::from_slice::<LoginRequest>(data.as_slice()).unwrap();
-            if request.is_valid() {
-                return request.into()
+
+        match data {
+            Ok(data) => {
+                match self.del(&key) {
+                    Err(e) => {
+                        error!("Could not delete login request by key {}: {}", code, e);
+                    },
+                    _ => {}
+                }
+
+                match serde_cbor::from_slice::<LoginRequest>(data.as_slice()) {
+                    Ok(request) => {
+                        if request.is_valid() {
+                            return request.into();
+                        }
+                        None
+                    },
+                    Err(e) => {
+                        error!("Deserialization error: {}", e);
+                        None
+                    }
+                }
+
+            },
+            Err(e) => {
+                error!("Could not get login request by code {}: {}", code, e);
+                None
             }
         }
-        None
+
     }
 
-    pub fn create_attach_request(&self, username: &String) -> String {
+    pub fn create_attach_request(&self, username: &String) -> Result<String> {
         let attach_request = AttachRequest::new(username);
         let key = format!("ATTACH:{}", &attach_request.code);
-        self.set(&key, serde_cbor::to_vec(&attach_request).unwrap()).unwrap();
-        attach_request.code
+        self.set(&key, serde_cbor::to_vec(&attach_request)?)?;
+        Ok(attach_request.code)
     }
 
     pub fn get_attach_request(&self, code: &String) -> Option<AttachRequest> {
         let key = format!("ATTACH:{}", code);
         let data = self.get::<Vec<u8>>(&key);
         self.del(&key).unwrap();
-        if let Some(data) = data {
-            let request = serde_cbor::from_slice::<AttachRequest>(data.as_slice()).unwrap();
-            if request.is_valid() {
-                return request.into()
+        match data {
+            Ok(data) => {
+                match serde_cbor::from_slice::<AttachRequest>(data.as_slice()) {
+                    Ok(req) => {
+                        if req.is_valid() {
+                            return Some(req.into())
+                        }
+                        error!("Trying to get invalid attach request");
+                        None
+                    }
+                    _ => None
+                }
+            }
+            Err(e) => {
+                error!("Could not get an attach request with code {}: {}", code, e);
+                None
             }
         }
-        None
     }
 
-    pub fn set_mail_account(&self, username: &String, email: &String, password: &String) {
+    pub fn set_mail_account(&self, username: &String, email: &String, password: &String) -> Result<bool> {
         let key = format!("ACCOUNT:{}", username);
         let account = MailAccount{email: email.clone(), password: password.clone()};
         let encrypted_account: MailAccountEncrypted = account.into();
-        self.set_bin(&key, &encrypted_account).unwrap()
+        self.set_bin(&key, &encrypted_account)
     }
 
     pub fn get_mail_account(&self, username: &String) -> Option<MailAccount> {
