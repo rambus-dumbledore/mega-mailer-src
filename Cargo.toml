@@ -26,6 +26,9 @@ lazy_static = "1.4"
 block-modes = "0.7"
 aes = "0.6"
 thiserror = "1.0"
+imap = { version = "=2.4.1", default-features = false }
+rustls-connector = { version = "=0.13.1" }
+schedule = { git = "http://gogs.ddosya.ml/ramb/shedule-rs.git" }
 
 [[bin]]
 name = "mega_mailer"

@@ -5,13 +5,14 @@ mod web;
 mod types;
 mod bot;
 mod cfg;
+mod mail_checker;
 
 use storage::Storage;
 use web::{SessionKeystore};
-use cfg::CONFIG;
 use log::{error};
 
 use pretty_env_logger;
+use crate::mail_checker::Checker;
 
 fn main() {
     pretty_env_logger::init();
@@ -27,13 +28,15 @@ fn main() {
         }
         let storage = storage.unwrap();
 
-        let bot = bot::TelegramBot::new(&CONFIG.get::<String>("bot.secret"), storage.clone());
+        let bot = bot::TelegramBot::new(storage.clone());
+        Checker::start().unwrap();
 
         let instance = web::init_server_instance()
             .await
             .manage(storage)
             .manage(session_keystore)
-            .manage(bot);
+            .manage(bot)
+        ;
 
         instance.launch()
             .await

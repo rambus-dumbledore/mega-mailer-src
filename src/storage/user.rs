@@ -7,7 +7,7 @@ use crate::storage::Storage;
 
 #[derive(Serialize, Deserialize)]
 pub struct User {
-    pub user_name: String,
+    pub username: String,
     pub photo: Option<String>,
 }
 

@@ -3,9 +3,12 @@ use tokio;
 use telegram_bot::*;
 use regex;
 use lazy_static::*;
-
-use crate::storage::Storage;
 use std::str::FromStr;
+use std::sync::Once;
+
+use crate::cfg::CONFIG;
+use crate::storage::Storage;
+use crate::types::*;
 
 #[derive(Clone)]
 pub struct TelegramBot {
@@ -14,7 +17,8 @@ pub struct TelegramBot {
 }
 
 impl TelegramBot {
-    pub fn new(token: &String, storage: Storage) -> TelegramBot {
+    pub fn new(storage: Storage) -> TelegramBot {
+        let token = CONFIG.get::<String>("bot.secret");
         let api = Api::new(token);
 
         let bot = TelegramBot{
@@ -24,7 +28,10 @@ impl TelegramBot {
 
         let bot_ = bot.clone();
 
-        tokio::spawn(async move { bot_.run().await });
+        static INIT_LISTENER: Once = Once::new();
+        INIT_LISTENER.call_once(|| {
+            tokio::spawn(async move { bot_.run().await });
+        });
 
         bot
     }
@@ -66,5 +73,16 @@ impl TelegramBot {
         let chat = self.api.send(GetChat::new(ChatRef::from_chat_id(ChatId::new(chat_id)))).await.unwrap();
         let code = self.storage.create_login_request(username);
         self.api.send(chat.text(format!("Your login code: {}", code))).await.unwrap();
+    }
+
+    pub async fn send_markdown(&self, username: &String, text: &String) -> Result<()> {
+        let chat_id_str = self.storage.get_telegram_id(username)?;
+
+        let chat_id: Integer = Integer::from_str(&chat_id_str.as_str())?;
+        let chat = self.api.send(GetChat::new(ChatRef::from_chat_id(ChatId::new(chat_id)))).await?;
+
+        self.api.send(chat.text(text).parse_mode(ParseMode::Markdown)).await?;
+
+        Ok(())
     }
 }

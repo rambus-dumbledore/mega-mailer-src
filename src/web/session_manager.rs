@@ -56,7 +56,7 @@ impl SessionManager<'_> {
         let cookie = SignWithKey::sign_with_key(claims, &self.keystore.key).unwrap();
 
         let user = User{
-            user_name: user_name.clone(),
+            username: user_name.clone(),
             photo: None
         };
 

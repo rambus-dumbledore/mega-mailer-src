@@ -8,6 +8,7 @@ use crate::types::{Result, Error};
 use crate::storage::{User, LoginRequest, AttachRequest, MailAccount};
 use crate::storage::mail_account::MailAccountEncrypted;
 use crate::cfg::CONFIG;
+use std::collections::HashSet;
 
 #[derive(Clone)]
 pub struct Storage {
@@ -39,6 +40,26 @@ impl Storage {
         conn.del(key.as_str())
     }
 
+    fn sadd_impl<T: ToRedisArgs,KV: FromRedisValue>(&self, key: &String, value: T) -> redis::RedisResult<KV> {
+        let mut conn = self.client.get_connection().unwrap();
+        conn.sadd(key.as_str(), value)
+    }
+
+    fn sismember_impl<T: ToRedisArgs, KV: FromRedisValue>(&self, key: &String, value: T) -> redis::RedisResult<KV> {
+        let mut conn = self.client.get_connection().unwrap();
+        conn.sismember(key.as_str(), value)
+    }
+
+    fn srem_impl<T: ToRedisArgs, KV: FromRedisValue>(&self, key: &String, value: T) -> redis::RedisResult<KV> {
+        let mut conn = self.client.get_connection().unwrap();
+        conn.srem(key.as_str(), value)
+    }
+
+    fn smembers_impl<KV: FromRedisValue>(&self, key: &String) -> redis::RedisResult<KV> {
+        let mut conn = self.client.get_connection().unwrap();
+        conn.smembers(key.as_str())
+    }
+    
     fn set<T: ToRedisArgs>(&self, key: &String, value: T) -> Result<bool> {
         let res = self.set_impl(key, value);
         res.map_err(|e| {
@@ -81,6 +102,40 @@ impl Storage {
         Err(Error::StorageError(res.unwrap_err()))
     }
 
+    fn sadd<T: ToRedisArgs>(&self, key: &String, value: T) -> Result<bool> {
+        let res = self.sadd_impl::<T, u8>(key, value);
+        if let Ok(res) = res {
+            return Ok(res == 1)
+        }
+
+        Err(Error::StorageError(res.unwrap_err()))
+    }
+
+    fn sismember<T: ToRedisArgs>(&self, key: &String, value: T) -> Result<bool> {
+        let res = self.sismember_impl::<T, u8>(key, value);
+        if let Ok(res) = res {
+            return Ok(res == 1)
+        }
+
+        Err(Error::StorageError(res.unwrap_err()))
+    }
+
+    fn srem<T: ToRedisArgs>(&self, key: &String, value: T) -> Result<bool> {
+        let res = self.srem_impl::<T, u8>(key, value);
+        if let Ok(res) = res {
+            return Ok(res == 1)
+        }
+        Err(Error::StorageError(res.unwrap_err()))
+    }
+
+    fn smembers<KV: FromRedisValue>(&self, key: &String) -> Result<KV> {
+        let res = self.smembers_impl::<KV>(key);
+        if let Ok(res) = res {
+            return Ok(res);
+        }
+        Err(Error::StorageError(res.err().unwrap()))
+    }
+
     pub fn get_session(&self, username: &String) -> Option<User> {
         let key = format!("SESSION:{}", username);
         let data = self.get::<Vec<u8>>(&key);
@@ -91,7 +146,7 @@ impl Storage {
     }
 
     pub fn set_session(&self, user: &User) {
-        let key = format!("SESSION:{}", user.user_name);
+        let key = format!("SESSION:{}", user.username);
         let data = serde_cbor::to_vec(&user).unwrap(); // TODO
         self.set(&key, data).unwrap();
     }
@@ -199,5 +254,53 @@ impl Storage {
             return Some(account);
         }
         None
+    }
+
+    pub fn add_processed_mails(&self, username: &String, uids: &[u32]) -> Result<()> {
+        let key = format!("PROCESSED_MAIL:{}", username);
+        for uid in uids {
+            let res = self.sadd(&key, *uid);
+            if res.is_err() {
+                return Err(res.unwrap_err());
+            }
+        }
+        Ok(())
+    }
+
+    pub fn filter_unprocessed(&self, username: &String, uids: &[&u32]) -> Result<Vec<u32>> {
+        let mut unprocessed = Vec::<u32>::new();
+        let key = format!("PROCESSED_MAIL:{}", username);
+
+        for uid in uids {
+            let res = self.sismember(&key, **uid);
+            if res.is_err() {
+                return Err(res.unwrap_err())
+            }
+            if !res.unwrap() {
+                unprocessed.push(*uid.clone());
+            }
+        }
+
+        Ok(unprocessed)
+    }
+
+    pub fn is_checking_enabled(&self, username: &String) -> Result<bool> {
+        let key = format!("CHECKING_ENABLED");
+        self.sismember(&key, username)
+    }
+
+    pub fn disable_checking(&self, username: &String) -> Result<bool> {
+        let key = format!("CHECKING_ENABLED");
+        self.srem(&key, username)
+    }
+
+    pub fn enable_checking(&self, username: &String) -> Result<bool> {
+        let key = format!("CHECKING_ENABLED");
+        self.sadd(&key, username)
+    }
+
+    pub fn get_usernames_for_checking(&self) -> Result<HashSet<String>> {
+        let key = format!("CHECKING_ENABLED");
+        self.smembers(&key)
     }
 }

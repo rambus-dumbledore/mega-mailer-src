@@ -13,3 +13,8 @@ web:
 
 bot:
   secret: ''
+
+mail:
+  address: ''
+  port: 993
+
