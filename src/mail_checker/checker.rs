@@ -9,7 +9,7 @@ use schedule;
 use tokio;
 use rustyknife::rfc2047::encoded_word;
 
-use crate::types::Result;
+use crate::types::{Result, Error, MailCheckerError};
 use crate::storage::{Storage, MailAccount};
 use crate::cfg::CONFIG;
 use crate::bot::TelegramBot;
@@ -65,15 +65,32 @@ impl Checker {
         bot: &TelegramBot,
         username: &String,
     ) {
-        let envelope = message.envelope().unwrap();
-        let from_addr = &envelope.from.as_ref().unwrap()[0];
-        let from = Checker::decode_value(from_addr.name);
+        let envelope = message.envelope();
+        if let None = envelope {
+            let error = Error::MailCheckerError(MailCheckerError::EmptyEnvelope);
+            error!("{}", error);
+            return;
+        }
+        let envelope = envelope.unwrap();
+
+        let mut from_addr: Option<&[u8]> = None;
+        let mut host: Option<&[u8]> = None;
+        let mut mailbox: Option<&[u8]> = None;
+
+        if let Some(addresses) = &envelope.from.as_ref() {
+            if addresses.len() > 0 {
+                from_addr = addresses[0].name;
+                host = addresses[0].host;
+                mailbox = addresses[0].mailbox;
+            }
+        }
+
+        let from = Checker::decode_value(from_addr);
         let subject = Checker::decode_value(envelope.subject);
 
-        let address = &envelope.from.as_ref().unwrap()[0];
-        let host = String::from_utf8_lossy(address.host.unwrap());
-        let mailbox = String::from_utf8_lossy(address.mailbox.unwrap());
-        let email = format!("{}@{}", mailbox, host);
+        let email = format!("{}@{}",
+            String::from_utf8_lossy(mailbox.unwrap_or("nobody".as_bytes())),
+            String::from_utf8_lossy(host.unwrap_or("nowhere".as_bytes())));
 
         let subject = subject.unwrap_or("No subject".into());
         let notify = if let Some(from) = from {

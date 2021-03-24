@@ -26,6 +26,12 @@ pub enum NetworkError {
 }
 
 #[derive(Error, Debug)]
+pub enum MailCheckerError {
+    #[error("Empty envelope")]
+    EmptyEnvelope,
+}
+
+#[derive(Error, Debug)]
 pub enum Error {
     #[error("Storage error: {0}")]
     StorageError(RedisError),
@@ -43,6 +49,8 @@ pub enum Error {
     NetworkError(NetworkError),
     #[error("Schedule error: {0}")]
     ScheduleError(schedule::error::Error),
+    #[error("MailChecker error: {0}")]
+    MailCheckerError(MailCheckerError),
 }
 
 impl<'r> Responder<'r, 'static> for Error {
