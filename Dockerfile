@@ -5,8 +5,8 @@ COPY Cargo.toml /build/
 
 WORKDIR /build
 RUN apk add --no-cache musl-dev && \
-    cargo build
+    cargo build --release
 
 FROM scratch
-COPY --from=build /build/target/debug/mega_mailer /opt/mega-mailer/mega_mailer
+COPY --from=build /build/target/release/mega_mailer /opt/mega-mailer/mega_mailer
 COPY config.yaml /opt/mega-mailer
