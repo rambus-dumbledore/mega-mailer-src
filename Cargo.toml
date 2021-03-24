@@ -29,6 +29,7 @@ thiserror = "1.0"
 imap = { version = "=2.4.1", default-features = false }
 rustls-connector = { version = "=0.13.1" }
 schedule = { git = "http://gogs.ddosya.ml/ramb/shedule-rs.git" }
+rustyknife = "0.2"
 
 [[bin]]
 name = "mega_mailer"

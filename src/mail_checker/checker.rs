@@ -7,6 +7,7 @@ use std::ops::Deref;
 use std::iter::FromIterator;
 use schedule;
 use tokio;
+use rustyknife::rfc2047::encoded_word;
 
 use crate::types::Result;
 use crate::storage::{Storage, MailAccount};
@@ -48,6 +49,17 @@ impl Checker {
         Ok(imap::Client::new(stream))
     }
 
+    fn decode_value(data: Option<&[u8]>) -> Option<String> {
+        if let Some(data) = data {
+            let value = String::from_utf8_lossy(data).into_owned();
+            let data_owner = value.clone();
+            let data = data_owner.as_bytes();
+            let (_, value) = encoded_word(data).unwrap_or((&[], value));
+            return Some(value);
+        }
+        None
+    }
+
     fn process_message(
         message: &imap::types::Fetch,
         bot: &TelegramBot,
@@ -55,17 +67,8 @@ impl Checker {
     ) {
         let envelope = message.envelope().unwrap();
         let from_addr = &envelope.from.as_ref().unwrap()[0];
-        let from = if let Some(from) = from_addr.name {
-            Some(String::from_utf8_lossy(from))
-        } else {
-            None
-        };
-
-        let subject = if let Some(subject) = envelope.subject.as_ref() {
-            Some(String::from_utf8_lossy(subject))
-        } else {
-            None
-        };
+        let from = Checker::decode_value(from_addr.name);
+        let subject = Checker::decode_value(envelope.subject);
 
         let address = &envelope.from.as_ref().unwrap()[0];
         let host = String::from_utf8_lossy(address.host.unwrap());
@@ -73,8 +76,8 @@ impl Checker {
         let email = format!("{}@{}", mailbox, host);
 
         let subject = subject.unwrap_or("No subject".into());
-        let notify = if from.is_some() {
-            format!("*{}*\n{}\n{}", from.unwrap(), email, subject)
+        let notify = if let Some(from) = from {
+            format!("*{}*\n{}\n{}", from, email, subject)
         } else {
             format!("*{}*\n{}", email, subject)
         };
