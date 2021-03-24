@@ -5,7 +5,7 @@ use crate::web::session_manager::{SessionManager};
 use rocket_contrib::json::Json;
 use serde_json::json;
 use crate::bot::TelegramBot;
-use crate::types::Result;
+use crate::types::{Result, AuthError, Error};
 
 #[derive(Deserialize)]
 struct LoginParams {
@@ -24,10 +24,18 @@ struct CodeParams {
 }
 
 #[post("/login_code", data = "<params>")]
-async fn login_code(storage: State<'_, Storage>, bot: State<'_, TelegramBot>, params: Json<CodeParams>) {
+async fn login_code(storage: State<'_, Storage>, bot: State<'_, TelegramBot>, params: Json<CodeParams>) -> Result<()> {
+    if params.username.len() == 0 {
+        return Err(Error::AuthorizationError(AuthError::UsernameEmpty))
+    }
+
     if let Ok(id) = storage.get_telegram_id(&params.username) {
         bot.send_login_code(id, &params.username).await;
+    } else {
+        return Err(Error::AuthorizationError(AuthError::UserNotRegistered))
     }
+
+    Ok(())
 }
 
 #[derive(Deserialize)]
@@ -37,6 +45,14 @@ struct AttachCodeParams {
 
 #[post("/attach_code", data = "<params>")]
 fn attach_code(storage: State<'_, Storage>, params: Json<AttachCodeParams>) -> Result<String> {
+    if params.username.len() == 0 {
+        return Err(Error::AuthorizationError(AuthError::UsernameEmpty))
+    }
+
+    if let Ok(_) = storage.get_telegram_id(&params.username) {
+        return Err(Error::AuthorizationError(AuthError::UsernameAlreadyRegistered))
+    }
+
     let code = storage.create_attach_request(&params.username)?;
     Ok(json!({
         "code": code

@@ -13,6 +13,10 @@ pub enum AuthError {
     UserNotRegistered,
     #[error("Authorization code is invalid")]
     AuthCodeInvalid,
+    #[error("User with this username is already registered")]
+    UsernameAlreadyRegistered,
+    #[error("Empty username")]
+    UsernameEmpty,
 }
 
 #[derive(Error, Debug)]
