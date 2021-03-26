@@ -60,7 +60,7 @@ impl SessionManager<'_> {
             photo: None
         };
 
-        self.storage.set_session(&user);
+        self.storage.set_session(&user)?;
         self.cookies.add(
             Cookie::build(COOKIE_NAME, cookie)
                 .same_site(SameSite::Lax)

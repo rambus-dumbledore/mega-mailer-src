@@ -32,9 +32,15 @@ pub enum MailCheckerError {
 }
 
 #[derive(Error, Debug)]
+pub enum StorageError {
+    #[error("Redis connection error: {0}")]
+    ConnectionError(RedisError),
+}
+
+#[derive(Error, Debug)]
 pub enum Error {
     #[error("Storage error: {0}")]
-    StorageError(RedisError),
+    StorageError(StorageError),
     #[error("Serialization error: {0}")]
     SerializationError(serde_cbor::Error),
     #[error("Account error: {0}")]
@@ -69,7 +75,7 @@ impl<'r> Responder<'r, 'static> for Error {
 
 impl std::convert::From<RedisError> for Error {
     fn from(redis_error: RedisError) -> Self {
-        Error::StorageError(redis_error)
+        Error::StorageError(StorageError::ConnectionError(redis_error))
     }
 }
 
@@ -108,4 +114,3 @@ impl std::convert::From<schedule::error::Error> for Error {
         Error::ScheduleError(schedule_error)
     }
 }
-

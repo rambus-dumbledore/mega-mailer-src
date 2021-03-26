@@ -3,28 +3,33 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use redis::{FromRedisValue, ToRedisArgs, Commands};
 use log::{error};
+use std::collections::HashSet;
+use std::marker::PhantomData;
 
 use crate::types::{Result, Error};
 use crate::storage::{User, LoginRequest, AttachRequest, MailAccount};
 use crate::storage::mail_account::MailAccountEncrypted;
 use crate::cfg::CONFIG;
-use std::collections::HashSet;
+
+pub trait BaseStorage {}
 
 #[derive(Clone)]
-pub struct Storage {
+pub struct RedisStorage<T: BaseStorage> {
     client: redis::Client,
+    phantom: PhantomData<T>,
 }
 
-impl Storage {
-    pub fn new() -> Result<Storage> {
+impl<T: BaseStorage> RedisStorage<T> {
+    pub fn new() -> Result<RedisStorage<T>> {
         let client = redis::Client::open(format!("redis://{}", CONFIG.get::<String>("storage.redis")))?;
-        Ok(Storage {
-            client
+        Ok(RedisStorage {
+            client,
+            phantom: PhantomData
         })
     }
 }
 
-impl Storage {
+impl<Type: BaseStorage> RedisStorage<Type> {
     fn get_impl<T: FromRedisValue>(&self, key: &String) -> redis::RedisResult<T> {
         let mut conn = self.client.get_connection().unwrap();
         conn.get(key.as_str())
@@ -63,7 +68,7 @@ impl Storage {
     fn set<T: ToRedisArgs>(&self, key: &String, value: T) -> Result<bool> {
         let res = self.set_impl(key, value);
         res.map_err(|e| {
-            Error::StorageError(e)
+            Error::from(e)
         })
     }
 
@@ -99,7 +104,7 @@ impl Storage {
             return Ok(());
         }
 
-        Err(Error::StorageError(res.unwrap_err()))
+        Err(Error::from(res.unwrap_err()))
     }
 
     fn sadd<T: ToRedisArgs>(&self, key: &String, value: T) -> Result<bool> {
@@ -108,7 +113,7 @@ impl Storage {
             return Ok(res == 1)
         }
 
-        Err(Error::StorageError(res.unwrap_err()))
+        Err(Error::from(res.unwrap_err()))
     }
 
     fn sismember<T: ToRedisArgs>(&self, key: &String, value: T) -> Result<bool> {
@@ -117,7 +122,7 @@ impl Storage {
             return Ok(res == 1)
         }
 
-        Err(Error::StorageError(res.unwrap_err()))
+        Err(Error::from(res.unwrap_err()))
     }
 
     fn srem<T: ToRedisArgs>(&self, key: &String, value: T) -> Result<bool> {
@@ -125,7 +130,8 @@ impl Storage {
         if let Ok(res) = res {
             return Ok(res == 1)
         }
-        Err(Error::StorageError(res.unwrap_err()))
+
+        Err(Error::from(res.unwrap_err()))
     }
 
     fn smembers<KV: FromRedisValue>(&self, key: &String) -> Result<KV> {
@@ -133,22 +139,33 @@ impl Storage {
         if let Ok(res) = res {
             return Ok(res);
         }
-        Err(Error::StorageError(res.err().unwrap()))
-    }
 
+        Err(Error::from(res.err().unwrap()))
+    }
+}
+
+#[derive(Clone)]
+pub struct MainStorage;
+
+impl BaseStorage for MainStorage {}
+
+impl RedisStorage<MainStorage> {
     pub fn get_session(&self, username: &String) -> Option<User> {
         let key = format!("SESSION:{}", username);
         let data = self.get::<Vec<u8>>(&key);
         if let Ok(data) = data {
-            return serde_cbor::from_slice(data.as_slice()).unwrap() // TODO
+            return serde_cbor::from_slice(data.as_slice()).unwrap_or_else(|e| {
+                error!("{}", Error::from(e));
+                None
+            });
         }
         None
     }
 
-    pub fn set_session(&self, user: &User) {
+    pub fn set_session(&self, user: &User) ->Result<bool> {
         let key = format!("SESSION:{}", user.username);
-        let data = serde_cbor::to_vec(&user).unwrap(); // TODO
-        self.set(&key, data).unwrap();
+        let data = serde_cbor::to_vec(&user)?;
+        self.set(&key, data)
     }
 
     pub fn remove_session(&self, username: &String) {
@@ -304,3 +321,5 @@ impl Storage {
         self.smembers(&key)
     }
 }
+
+pub type Storage = RedisStorage<MainStorage>;
