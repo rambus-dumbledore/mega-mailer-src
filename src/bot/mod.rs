@@ -5,10 +5,11 @@ use regex;
 use lazy_static::*;
 use std::str::FromStr;
 use std::sync::Once;
+use log::{error};
 
 use crate::cfg::CONFIG;
 use crate::storage::Storage;
-use crate::types::*;
+use crate::types::{Error, Result};
 
 #[derive(Clone)]
 pub struct TelegramBot {
@@ -40,11 +41,14 @@ impl TelegramBot {
         let mut stream = self.api.stream();
 
         while let Some(update) = stream.next().await {
-            let update = update.unwrap();
-            if let UpdateKind::Message(message) = update.kind {
-                if let MessageKind::Text { ref data, .. } = message.kind {
-                    self.process_text(&message, data).await;
+            if let Ok(update) = update {
+                if let UpdateKind::Message(message) = update.kind {
+                    if let MessageKind::Text { ref data, .. } = message.kind {
+                        self.process_text(&message, data).await;
+                    }
                 }
+            } else {
+                error!("{}", update.unwrap_err());
             }
         }
     }
