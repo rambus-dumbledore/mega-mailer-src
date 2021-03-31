@@ -8,6 +8,7 @@ use std::iter::FromIterator;
 use schedule;
 use tokio;
 use rustyknife::rfc2047::encoded_word;
+use std::sync::Arc;
 
 use crate::types::{Result, Error, MailCheckerError};
 use crate::storage::{Storage, MailAccount};
@@ -151,7 +152,7 @@ impl Checker {
     }
 
     fn check_on_cron() {
-        let bot = TelegramBot::new(STORAGE.deref().clone());
+        let bot = TelegramBot::new(Arc::new(STORAGE.deref().clone()));
         let users = STORAGE.get_usernames_for_checking();
         if let Ok(users) = &users {
             for user in users {

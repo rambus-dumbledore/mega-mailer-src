@@ -1,11 +1,13 @@
 use serde::{Serialize, Deserialize};
 use rocket::{State, get, post, routes, Route};
-use crate::storage::{User, Storage, MailAccount};
+use std::sync::Arc;
+
 use rocket_contrib::json::Json;
+use crate::storage::{User, Storage, MailAccount};
 use crate::types::Result;
 
 #[get("/account")]
-fn get_account_settings(user: User, storage: State<Storage>) -> Json<Option<MailAccount>>{
+fn get_account_settings(user: User, storage: State<Arc<Storage>>) -> Json<Option<MailAccount>>{
     let account = storage.get_mail_account(&user.username);
     Json(account)
 }
@@ -22,13 +24,13 @@ struct SetAccountResponse {
 }
 
 #[post("/account", data = "<params>")]
-fn set_account_settings(user: User, params: Json<SetAccountParams>, storage: State<Storage>) -> Result<Json<SetAccountResponse>> {
+fn set_account_settings(user: User, params: Json<SetAccountParams>, storage: State<Arc<Storage>>) -> Result<Json<SetAccountResponse>> {
     let changed = storage.set_mail_account(&user.username, &params.email, &params.password)?;
     Ok(Json(SetAccountResponse{ changed }))
 }
 
 #[get("/checking")]
-fn get_checking_state(user: User, storage: State<Storage>) -> Result<Json<bool>> {
+fn get_checking_state(user: User, storage: State<Arc<Storage>>) -> Result<Json<bool>> {
     let res = storage.is_checking_enabled(&user.username)?;
     Ok(Json(res))
 }
@@ -39,7 +41,7 @@ struct SetCheckingParams {
 }
 
 #[post("/checking", data = "<params>")]
-fn set_checking(user: User, storage: State<Storage>, params: Json<SetCheckingParams>) -> Result<()>{
+fn set_checking(user: User, storage: State<Arc<Storage>>, params: Json<SetCheckingParams>) -> Result<()>{
     if params.state {
         let _ = storage.enable_checking(&user.username)?;
     } else {

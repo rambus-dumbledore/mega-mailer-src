@@ -1,3 +1,4 @@
+#![feature(type_alias_impl_trait)]
 #![feature(backtrace)]
 
 mod storage;
@@ -10,8 +11,9 @@ mod mail_checker;
 use storage::Storage;
 use web::{SessionKeystore};
 use log::{error};
-
 use pretty_env_logger;
+use std::sync::Arc;
+
 use crate::mail_checker::Checker;
 
 fn main() {
@@ -26,7 +28,7 @@ fn main() {
             error!("Could not create connection to storage: {}", err);
             return;
         }
-        let storage = storage.unwrap();
+        let storage = Arc::new(storage.unwrap());
 
         let bot = bot::TelegramBot::new(storage.clone());
         Checker::start().unwrap();

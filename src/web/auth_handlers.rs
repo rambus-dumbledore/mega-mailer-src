@@ -1,9 +1,11 @@
 use serde::Deserialize;
 use rocket::{State, get, post, Route, routes};
+use serde_json::json;
+use rocket_contrib::json::Json;
+use std::sync::Arc;
+
 use crate::storage::{User, Storage};
 use crate::web::session_manager::{SessionManager};
-use rocket_contrib::json::Json;
-use serde_json::json;
 use crate::bot::TelegramBot;
 use crate::types::{Result, AuthError, Error};
 
@@ -24,13 +26,13 @@ struct CodeParams {
 }
 
 #[post("/login_code", data = "<params>")]
-async fn login_code(storage: State<'_, Storage>, bot: State<'_, TelegramBot>, params: Json<CodeParams>) -> Result<()> {
+async fn login_code(storage: State<'_, Arc<Storage>>, bot: State<'_, TelegramBot>, params: Json<CodeParams>) -> Result<()> {
     if params.username.len() == 0 {
         return Err(Error::AuthorizationError(AuthError::UsernameEmpty))
     }
 
     if let Ok(id) = storage.get_telegram_id(&params.username) {
-        bot.send_login_code(id, &params.username).await;
+        bot.send_login_code(id, &params.username).await?;
     } else {
         return Err(Error::AuthorizationError(AuthError::UserNotRegistered))
     }
@@ -44,7 +46,7 @@ struct AttachCodeParams {
 }
 
 #[post("/attach_code", data = "<params>")]
-fn attach_code(storage: State<'_, Storage>, params: Json<AttachCodeParams>) -> Result<String> {
+fn attach_code(storage: State<'_, Arc<Storage>>, params: Json<AttachCodeParams>) -> Result<String> {
     if params.username.len() == 0 {
         return Err(Error::AuthorizationError(AuthError::UsernameEmpty))
     }

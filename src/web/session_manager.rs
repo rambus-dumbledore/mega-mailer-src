@@ -2,6 +2,7 @@ use hmac::{ Hmac, NewMac };
 use jwt::{SignWithKey, VerifyWithKey};
 use sha2::Sha256;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use rocket::http::{Cookie, SameSite, CookieJar};
 use rocket::request::{FromRequest, Outcome};
@@ -28,11 +29,11 @@ impl SessionKeystore {
 pub struct SessionManager<'a> {
     cookies: &'a CookieJar<'a>,
     keystore: State<'a, SessionKeystore>,
-    storage: State<'a, Storage>
+    storage: State<'a, Arc<Storage>>
 }
 
 impl SessionManager<'_> {
-    pub fn new<'a>(cookies: &'a CookieJar<'a>, keystore: State<'a, SessionKeystore>, storage: State<'a, Storage>) -> SessionManager<'a> {
+    pub fn new<'a>(cookies: &'a CookieJar<'a>, keystore: State<'a, SessionKeystore>, storage: State<'a, Arc<Storage>>) -> SessionManager<'a> {
         SessionManager{
             cookies,
             keystore,
@@ -123,7 +124,7 @@ impl<'r> FromRequest<'r> for SessionManager<'r> {
     async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         let keystore = request.guard::<State<SessionKeystore>>().await.unwrap();
         let cookies = request.cookies();
-        let storage = request.guard::<State<Storage>>().await.unwrap();
+        let storage = request.guard::<State<Arc<Storage>>>().await.unwrap();
         Outcome::Success(SessionManager{ keystore, cookies, storage })
     }
 }
