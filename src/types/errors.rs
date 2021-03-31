@@ -38,6 +38,12 @@ pub enum StorageError {
 }
 
 #[derive(Error, Debug)]
+pub enum TelegramBotError {
+    #[error("Request error: {0}")]
+    RequestError(teloxide::RequestError),
+}
+
+#[derive(Error, Debug)]
 pub enum Error {
     #[error("Storage error: {0}")]
     StorageError(StorageError),
@@ -48,7 +54,7 @@ pub enum Error {
     #[error("Parse integer error: {0}")]
     ParseIntError(std::num::ParseIntError),
     #[error("Telegram bot error: {0}")]
-    TelegramBotError(telegram_bot::Error),
+    TelegramBotError(TelegramBotError),
     #[error("Input/Output error: {0}")]
     IoError(std::io::Error),
     #[error("Network error: {0}")]
@@ -91,9 +97,9 @@ impl std::convert::From<std::num::ParseIntError> for Error {
     }
 }
 
-impl std::convert::From<telegram_bot::Error> for Error {
-    fn from(tg_bot_error: telegram_bot::Error) -> Self {
-        Error::TelegramBotError(tg_bot_error)
+impl std::convert::From<teloxide::RequestError> for Error {
+    fn from(req_error: teloxide::RequestError) -> Self {
+        Error::TelegramBotError(TelegramBotError::RequestError(req_error))
     }
 }
 

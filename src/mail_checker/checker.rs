@@ -9,6 +9,7 @@ use schedule;
 use tokio;
 use rustyknife::rfc2047::encoded_word;
 use std::sync::Arc;
+use teloxide::utils::markdown::escape;
 
 use crate::types::{Result, Error, MailCheckerError};
 use crate::storage::{Storage, MailAccount};
@@ -95,9 +96,9 @@ impl Checker {
 
         let subject = subject.unwrap_or("No subject".into());
         let notify = if let Some(from) = from {
-            format!("*{}*\n{}\n{}", from, email, subject)
+            format!("*{}*\n{}\n{}", escape(from.as_str()), escape(email.as_str()), escape(subject.as_str()))
         } else {
-            format!("*{}*\n{}", email, subject)
+            format!("*{}*\n{}", escape(email.as_str()), escape(subject.as_str()))
         };
 
         let bot = bot.clone();
