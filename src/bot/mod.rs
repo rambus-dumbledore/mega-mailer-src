@@ -1,13 +1,14 @@
+mod handlers;
+
 use tokio;
 use std::sync::Once;
-// use log::{error};
 use teloxide::{prelude::*, utils::command::BotCommand};
 use std::sync::Arc;
+use teloxide::types::ParseMode::{MarkdownV2};
 
 use crate::cfg::CONFIG;
 use crate::storage::Storage;
 use crate::types::Error;
-use teloxide::types::ParseMode::{MarkdownV2};
 
 #[derive(Clone)]
 pub struct TelegramBot {
@@ -21,7 +22,9 @@ enum Command {
     #[command(description = "display this text.")]
     Help,
     #[command(description = "attach telegram account to user account")]
-    Attach(String)
+    Attach(String),
+    #[command(description = "set account avatar from telegram")]
+    SetAvatar
 }
 
 impl TelegramBot {
@@ -54,18 +57,8 @@ impl TelegramBot {
             Command::Help => {
                 cx.answer(Command::descriptions()).send();
             },
-            Command::Attach(code) => {
-                let request = storage.get_attach_request(&code);
-                if let Some(request) = request {
-                    if request.is_valid() {
-                        let chat_id = cx.chat_id().to_string();
-                        storage.set_telegram_id(&request, &chat_id);
-                        cx.answer(format!("Success")).send();
-                        return Ok(());
-                    }
-                }
-                cx.answer("Invalid code").send();
-            }
+            Command::Attach(code) => { handlers::process_attach_command(cx, &storage, &code).await? },
+            Command::SetAvatar => { handlers::process_set_avatar_command(cx, &storage).await? }
         };
 
         Ok(())
@@ -82,4 +75,6 @@ impl TelegramBot {
         self.bot.send_message(chat_id, text).parse_mode(MarkdownV2).send().await?;
         Ok(())
     }
+
+
 }

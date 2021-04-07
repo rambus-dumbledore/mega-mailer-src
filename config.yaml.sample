@@ -5,6 +5,9 @@ storage:
   key: ''
   iv: ''
 
+file_storage:
+  path: ''
+
 web:
   address: '127.0.0.1'
   port: 8000

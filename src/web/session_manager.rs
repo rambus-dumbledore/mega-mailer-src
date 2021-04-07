@@ -96,7 +96,10 @@ impl SessionManager<'_> {
             let username = tree.get("username").unwrap().clone();
             let user = self.storage.get_session(&username);
 
-            if let Some(user) = user {
+            if let Some(mut user) = user {
+                if let Ok(photo) = self.storage.get_user_avatar(&username) {
+                    user.photo = Some(format!("/assets/{}", photo));
+                }
                 return Some(user)
             }
             return None

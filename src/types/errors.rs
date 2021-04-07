@@ -1,5 +1,5 @@
 use thiserror::Error;
-use redis::{RedisError};
+use redis::{RedisError, Connection};
 use rocket::response::Responder;
 use serde_json::json;
 use std::io::Cursor;
@@ -22,7 +22,9 @@ pub enum AuthError {
 #[derive(Error, Debug)]
 pub enum NetworkError {
     #[error("Handshake error: {0}")]
-    HandshakeError(rustls_connector::HandshakeError<std::net::TcpStream>)
+    HandshakeError(rustls_connector::HandshakeError<std::net::TcpStream>),
+    #[error("Reqwest error: {0}")]
+    ReqwestError(reqwest::Error)
 }
 
 #[derive(Error, Debug)]
@@ -41,6 +43,12 @@ pub enum StorageError {
 pub enum TelegramBotError {
     #[error("Request error: {0}")]
     RequestError(teloxide::RequestError),
+}
+
+#[derive(Error, Debug)]
+pub enum InternalError {
+    #[error("RWLockPoisoned error: {0}")]
+    RWLockPoisonedError(String)
 }
 
 #[derive(Error, Debug)]
@@ -63,6 +71,8 @@ pub enum Error {
     ScheduleError(schedule::error::Error),
     #[error("MailChecker error: {0}")]
     MailCheckerError(MailCheckerError),
+    #[error("Internal error: {0}")]
+    InternalError(InternalError)
 }
 
 impl<'r> Responder<'r, 'static> for Error {
@@ -118,5 +128,18 @@ impl std::convert::From<rustls_connector::HandshakeError<std::net::TcpStream>> f
 impl std::convert::From<schedule::error::Error> for Error {
     fn from(schedule_error: schedule::error::Error) -> Self {
         Error::ScheduleError(schedule_error)
+    }
+}
+
+impl std::convert::From<reqwest::Error> for Error {
+    fn from(reqwest_error: reqwest::Error) -> Self {
+        Error::NetworkError(NetworkError::ReqwestError(reqwest_error))
+    }
+}
+
+impl std::convert::From<std::sync::PoisonError<std::sync::RwLockWriteGuard<'_, redis::Connection>>> for Error {
+    fn from(e: std::sync::PoisonError<std::sync::RwLockWriteGuard<'_, Connection>>) -> Self {
+        let error = format!("{}", e);
+        Error::InternalError(InternalError::RWLockPoisonedError(error))
     }
 }

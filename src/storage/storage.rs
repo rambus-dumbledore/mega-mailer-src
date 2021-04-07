@@ -10,59 +10,56 @@ use crate::types::{Result, Error};
 use crate::storage::{User, LoginRequest, AttachRequest, MailAccount};
 use crate::storage::mail_account::MailAccountEncrypted;
 use crate::cfg::CONFIG;
+use std::sync::{RwLock, Arc};
 
 pub trait BaseStorage {}
 
 #[derive(Clone)]
 pub struct RedisStorage<T: BaseStorage> {
     client: redis::Client,
+    connection: Arc<RwLock<redis::Connection>>,
     phantom: PhantomData<T>,
 }
 
 impl<T: BaseStorage> RedisStorage<T> {
     pub fn new() -> Result<RedisStorage<T>> {
         let client = redis::Client::open(format!("redis://{}", CONFIG.get::<String>("storage.redis")))?;
+        let connection = Arc::new(RwLock::new(client.get_connection()?));
         Ok(RedisStorage {
             client,
+            connection,
             phantom: PhantomData
         })
     }
 }
 
 impl<Type: BaseStorage> RedisStorage<Type> {
-    fn get_impl<T: FromRedisValue>(&self, key: &String) -> redis::RedisResult<T> {
-        let mut conn = self.client.get_connection().unwrap();
-        conn.get(key.as_str())
+    fn get_impl<T: FromRedisValue>(&self, key: &String) -> Result<T> {
+        self.connection.write()?.get(key.as_str()).map_err(|e| Error::from(e))
     }
 
-    fn set_impl<T: ToRedisArgs, KV: FromRedisValue>(&self, key: &String, value: T) -> redis::RedisResult<KV> {
-        let mut conn = self.client.get_connection().unwrap();
-        conn.set(key.as_str(), value)
+    fn set_impl<T: ToRedisArgs, KV: FromRedisValue>(&self, key: &String, value: T) -> Result<KV> {
+        self.connection.write()?.set(key.as_str(), value).map_err(|e| Error::from(e))
     }
 
-    fn del_impl<KV: FromRedisValue>(&self, key: &String) -> redis::RedisResult<KV> {
-        let mut conn = self.client.get_connection().unwrap();
-        conn.del(key.as_str())
+    fn del_impl<KV: FromRedisValue>(&self, key: &String) -> Result<KV> {
+        self.connection.write()?.del(key.as_str()).map_err(|e| Error::from(e))
     }
 
-    fn sadd_impl<T: ToRedisArgs,KV: FromRedisValue>(&self, key: &String, value: T) -> redis::RedisResult<KV> {
-        let mut conn = self.client.get_connection().unwrap();
-        conn.sadd(key.as_str(), value)
+    fn sadd_impl<T: ToRedisArgs,KV: FromRedisValue>(&self, key: &String, value: T) -> Result<KV> {
+        self.connection.write()?.sadd(key.as_str(), value).map_err(|e| Error::from(e))
     }
 
-    fn sismember_impl<T: ToRedisArgs, KV: FromRedisValue>(&self, key: &String, value: T) -> redis::RedisResult<KV> {
-        let mut conn = self.client.get_connection().unwrap();
-        conn.sismember(key.as_str(), value)
+    fn sismember_impl<T: ToRedisArgs, KV: FromRedisValue>(&self, key: &String, value: T) -> Result<KV> {
+        self.connection.write()?.sismember(key.as_str(), value).map_err(|e| Error::from(e))
     }
 
-    fn srem_impl<T: ToRedisArgs, KV: FromRedisValue>(&self, key: &String, value: T) -> redis::RedisResult<KV> {
-        let mut conn = self.client.get_connection().unwrap();
-        conn.srem(key.as_str(), value)
+    fn srem_impl<T: ToRedisArgs, KV: FromRedisValue>(&self, key: &String, value: T) -> Result<KV> {
+        self.connection.write()?.srem(key.as_str(), value).map_err(|e| Error::from(e))
     }
 
-    fn smembers_impl<KV: FromRedisValue>(&self, key: &String) -> redis::RedisResult<KV> {
-        let mut conn = self.client.get_connection().unwrap();
-        conn.smembers(key.as_str())
+    fn smembers_impl<KV: FromRedisValue>(&self, key: &String) -> Result<KV> {
+        self.connection.write()?.smembers(key.as_str()).map_err(|e| Error::from(e))
     }
     
     fn set<T: ToRedisArgs>(&self, key: &String, value: T) -> Result<bool> {
@@ -98,7 +95,7 @@ impl<Type: BaseStorage> RedisStorage<Type> {
     }
 
     fn del(&self, key: &String) -> Result<()> {
-        let res: redis::RedisResult<()> = self.del_impl(key);
+        let res = self.del_impl::<()>(key);
 
         if res.is_ok() {
             return Ok(());
@@ -178,9 +175,17 @@ impl RedisStorage<MainStorage> {
         self.get::<String>(&key)
     }
 
+    pub fn get_username(&self, telegram_id: &String) -> Result<String> {
+        let key = format!("USERNAME:{}", telegram_id);
+        self.get(&key)
+    }
+
     pub fn set_telegram_id(&self, attach_request: &AttachRequest, telegram_id: &String) {
         let key = format!("TELEGRAM_ID:{}", attach_request.username);
         self.set(&key, telegram_id).unwrap();
+
+        let key = format!("USERNAME:{}", telegram_id);
+        self.set(&key, &attach_request.username).unwrap();
     }
 
     pub fn create_login_request(&self, username: &String) -> String {
@@ -319,6 +324,16 @@ impl RedisStorage<MainStorage> {
     pub fn get_usernames_for_checking(&self) -> Result<HashSet<String>> {
         let key = format!("CHECKING_ENABLED");
         self.smembers(&key)
+    }
+
+    pub fn set_user_avatar(&self, username: &String, filename: &String) -> Result<bool> {
+        let key = format!("AVATAR:{}", username);
+        self.set(&key, filename)
+    }
+
+    pub fn get_user_avatar(&self, username: &String) -> Result<String> {
+        let key = format!("AVATAR:{}", username);
+        self.get::<String>(&key)
     }
 }
 
