@@ -1,18 +1,17 @@
-use serde::Deserialize;
-use rocket::{State, get, post, Route, routes};
-use serde_json::json;
+use rocket::{get, post, routes, Route, State};
 use rocket_contrib::json::Json;
+use serde::Deserialize;
+use serde_json::json;
 use std::sync::Arc;
 
-use crate::storage::{User, Storage};
-use crate::web::session_manager::{SessionManager};
-use crate::bot::TelegramBot;
-use crate::types::{Result, AuthError, Error};
+use common::sessions::SessionManager;
+use common::storage::{Storage, User};
+use common::types::{AuthError, Error, Result, TelegramMessageTask};
 
 #[derive(Deserialize)]
 struct LoginParams {
     pub username: String,
-    pub code: String
+    pub code: String,
 }
 
 #[post("/login", data = "<params>")]
@@ -22,19 +21,23 @@ fn login(mut sm: SessionManager<'_>, params: Json<LoginParams>) -> Result<()> {
 
 #[derive(Deserialize)]
 struct CodeParams {
-    pub username: String
+    pub username: String,
 }
 
 #[post("/login_code", data = "<params>")]
-async fn login_code(storage: State<'_, Arc<Storage>>, bot: State<'_, TelegramBot>, params: Json<CodeParams>) -> Result<()> {
+async fn login_code(storage: State<'_, Arc<Storage>>, params: Json<CodeParams>) -> Result<()> {
     if params.username.len() == 0 {
-        return Err(Error::AuthorizationError(AuthError::UsernameEmpty))
+        return Err(Error::AuthorizationError(AuthError::UsernameEmpty));
     }
 
-    if let Ok(id) = storage.get_telegram_id(&params.username) {
-        bot.send_login_code(id, &params.username).await?;
+    if let Ok(_id) = storage.get_telegram_id(&params.username) {
+        let code = storage.create_login_request(&params.username);
+        let text = format!("Your login code: {}", code);
+        let to = params.username.clone();
+
+        storage.add_send_message_task_to_queue(TelegramMessageTask { to, text })?;
     } else {
-        return Err(Error::AuthorizationError(AuthError::UserNotRegistered))
+        return Err(Error::AuthorizationError(AuthError::UserNotRegistered));
     }
 
     Ok(())
@@ -42,23 +45,23 @@ async fn login_code(storage: State<'_, Arc<Storage>>, bot: State<'_, TelegramBot
 
 #[derive(Deserialize)]
 struct AttachCodeParams {
-    pub username: String
+    pub username: String,
 }
 
 #[post("/attach_code", data = "<params>")]
 fn attach_code(storage: State<'_, Arc<Storage>>, params: Json<AttachCodeParams>) -> Result<String> {
     if params.username.len() == 0 {
-        return Err(Error::AuthorizationError(AuthError::UsernameEmpty))
+        return Err(Error::AuthorizationError(AuthError::UsernameEmpty));
     }
 
     if let Ok(_) = storage.get_telegram_id(&params.username) {
-        return Err(Error::AuthorizationError(AuthError::UsernameAlreadyRegistered))
+        return Err(Error::AuthorizationError(
+            AuthError::UsernameAlreadyRegistered,
+        ));
     }
 
     let code = storage.create_attach_request(&params.username)?;
-    Ok(json!({
-        "code": code
-    }).to_string())
+    Ok(json!({ "code": code }).to_string())
 }
 
 #[get("/whoami")]

@@ -1,42 +1,30 @@
-use rustls_connector::{RustlsConnector, TlsStream};
-use std::net::TcpStream;
 use imap;
 use lazy_static::lazy_static;
-use log::{error, debug};
-use std::ops::Deref;
-use std::iter::FromIterator;
-use schedule;
-use tokio;
+use log::{debug, error};
+use rustls_connector::{RustlsConnector, TlsStream};
 use rustyknife::rfc2047::encoded_word;
-use std::sync::Arc;
+use std::iter::FromIterator;
+use std::net::TcpStream;
 use teloxide::utils::markdown::escape;
 
-use crate::types::{Result, Error, MailCheckerError};
-use crate::storage::{Storage, MailAccount};
-use crate::cfg::CONFIG;
-use crate::bot::TelegramBot;
+use common::cfg::CONFIG;
+use common::storage::{MailAccount, Storage};
+use common::types::{Error, MailCheckerError, Result, TelegramMessageTask};
 
-
-lazy_static!{
+lazy_static! {
     static ref STORAGE: Storage = Storage::new().unwrap();
 }
 
 pub struct Checker {
     host: String,
-    port: u16
+    port: u16,
 }
 
 impl Checker {
-    fn new() -> Result<Checker> {
+    fn new() -> Checker {
         let host = CONFIG.get::<String>("mail.address");
         let port = CONFIG.get::<u16>("mail.port");
-
-        Ok(
-            Checker{
-                host,
-                port
-            }
-        )
+        Checker { host, port }
     }
 
     fn build_stream(&self) -> Result<TlsStream<TcpStream>> {
@@ -62,11 +50,7 @@ impl Checker {
         None
     }
 
-    fn process_message(
-        message: &imap::types::Fetch,
-        bot: &TelegramBot,
-        username: &String,
-    ) {
+    fn process_message(message: &imap::types::Fetch, username: &String) {
         let envelope = message.envelope();
         if let None = envelope {
             let error = Error::MailCheckerError(MailCheckerError::EmptyEnvelope);
@@ -90,34 +74,44 @@ impl Checker {
         let from = Checker::decode_value(from_addr);
         let subject = Checker::decode_value(envelope.subject);
 
-        let email = format!("{}@{}",
+        let email = format!(
+            "{}@{}",
             String::from_utf8_lossy(mailbox.unwrap_or("nobody".as_bytes())),
-            String::from_utf8_lossy(host.unwrap_or("nowhere".as_bytes())));
+            String::from_utf8_lossy(host.unwrap_or("nowhere".as_bytes()))
+        );
 
         let subject = subject.unwrap_or("No subject".into());
         let notify = if let Some(from) = from {
-            format!("*{}*\n{}\n{}", escape(from.as_str()), escape(email.as_str()), escape(subject.as_str()))
+            format!(
+                "*{}*\n{}\n{}",
+                escape(from.as_str()),
+                escape(email.as_str()),
+                escape(subject.as_str())
+            )
         } else {
             format!("*{}*\n{}", escape(email.as_str()), escape(subject.as_str()))
         };
 
-        let bot = bot.clone();
-        let username = username.clone();
-        tokio::runtime::Runtime::new().unwrap().block_on(async move {
-            let res = bot.send_markdown(&username, &notify).await;
-            if res.is_err() {
-                error!(target: "TelegramBot", "{}", res.unwrap_err());
-            }
-        });
+        let task = TelegramMessageTask {
+            to: username.clone(),
+            text: notify,
+        };
+        if let Err(e) = STORAGE.add_send_message_task_to_queue(task) {
+            error!("{}", e);
+            return;
+        }
     }
 
-    fn process_account(
-        username: &String,
-        account: &MailAccount,
-        bot: &TelegramBot
-    ) {
-        let MailAccount {email, password} = account;
-        let client = Checker::new().unwrap().build_client().unwrap();
+    fn process_account(username: &String, account: &MailAccount) {
+        let MailAccount { email, password } = account;
+        let client = match Checker::new().build_client() {
+            Ok(client) => client,
+            Err(e) => {
+                error!("Could not connect to mail server: {}", e);
+                return;
+            }
+        };
+
         let mut session = match client.login(email, password).map_err(|e| e.0) {
             Ok(session) => session,
             Err(e) => {
@@ -136,25 +130,32 @@ impl Checker {
             }
 
             let available_uids = Vec::from_iter(unseen.iter());
-            let to_fetch_uids = STORAGE.filter_unprocessed(username, available_uids.as_slice()).unwrap();
+            let to_fetch_uids = STORAGE
+                .filter_unprocessed(username, available_uids.as_slice())
+                .unwrap();
 
-            let to_fetch = format!("{}", Vec::from_iter(to_fetch_uids.iter().map(|x| x.to_string())).join(","));
+            let to_fetch = format!(
+                "{}",
+                Vec::from_iter(to_fetch_uids.iter().map(|x| x.to_string())).join(",")
+            );
             debug!("User: \"{}\" To fetch {}", username, to_fetch);
 
             let fetched = session.fetch(to_fetch, "ENVELOPE").unwrap();
             for message in fetched.iter() {
-                Checker::process_message(message, bot, username);
+                Checker::process_message(message, username);
             }
 
-            STORAGE.add_processed_mails(username, to_fetch_uids.as_slice()).unwrap();
+            STORAGE
+                .add_processed_mails(username, to_fetch_uids.as_slice())
+                .unwrap();
         }
 
         session.logout().unwrap()
     }
 
-    fn check_on_cron() {
-        let bot = TelegramBot::new(Arc::new(STORAGE.deref().clone()));
+    pub fn check_on_cron() {
         let users = STORAGE.get_usernames_for_checking();
+
         if let Ok(users) = &users {
             for user in users {
                 let account = STORAGE.get_mail_account(user);
@@ -165,28 +166,10 @@ impl Checker {
                 }
 
                 let account = account.unwrap();
-                Checker::process_account(user, &account, &bot);
+                Checker::process_account(user, &account);
             }
-
         } else {
             error!(target: "MailChecker", "{}", users.unwrap_err());
         }
-    }
-
-    pub fn start() -> Result<()> {
-        let mut agenda = schedule::Agenda::new();
-
-        agenda.add(move ||{
-            Checker::check_on_cron();
-        }).schedule("0 * * * * *")?;
-
-        std::thread::spawn(move || {
-            loop {
-                agenda.run_pending();
-                std::thread::sleep(std::time::Duration::from_millis(500));
-            }
-       });
-
-        Ok(())
     }
 }

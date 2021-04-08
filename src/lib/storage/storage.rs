@@ -1,16 +1,16 @@
-use serde_cbor;
-use serde::Serialize;
+use log::error;
+use redis::{Commands, FromRedisValue, ToRedisArgs};
 use serde::de::DeserializeOwned;
-use redis::{FromRedisValue, ToRedisArgs, Commands};
-use log::{error};
-use std::collections::HashSet;
+use serde::Serialize;
+use serde_cbor;
+use std::collections::{BTreeMap, HashSet};
 use std::marker::PhantomData;
+use std::sync::{Arc, RwLock};
 
-use crate::types::{Result, Error};
-use crate::storage::{User, LoginRequest, AttachRequest, MailAccount};
-use crate::storage::mail_account::MailAccountEncrypted;
 use crate::cfg::CONFIG;
-use std::sync::{RwLock, Arc};
+use crate::storage::mail_account::MailAccountEncrypted;
+use crate::storage::{AttachRequest, LoginRequest, MailAccount, User};
+use crate::types::{Error, Result, TelegramMessageTask};
 
 pub trait BaseStorage {}
 
@@ -23,56 +23,118 @@ pub struct RedisStorage<T: BaseStorage> {
 
 impl<T: BaseStorage> RedisStorage<T> {
     pub fn new() -> Result<RedisStorage<T>> {
-        let client = redis::Client::open(format!("redis://{}", CONFIG.get::<String>("storage.redis")))?;
+        let client =
+            redis::Client::open(format!("redis://{}", CONFIG.get::<String>("storage.redis")))?;
         let connection = Arc::new(RwLock::new(client.get_connection()?));
         Ok(RedisStorage {
             client,
             connection,
-            phantom: PhantomData
+            phantom: PhantomData,
         })
     }
 }
 
 impl<Type: BaseStorage> RedisStorage<Type> {
     fn get_impl<T: FromRedisValue>(&self, key: &String) -> Result<T> {
-        self.connection.write()?.get(key.as_str()).map_err(|e| Error::from(e))
+        self.connection
+            .write()?
+            .get(key.as_str())
+            .map_err(|e| Error::from(e))
     }
 
     fn set_impl<T: ToRedisArgs, KV: FromRedisValue>(&self, key: &String, value: T) -> Result<KV> {
-        self.connection.write()?.set(key.as_str(), value).map_err(|e| Error::from(e))
+        self.connection
+            .write()?
+            .set(key.as_str(), value)
+            .map_err(|e| Error::from(e))
     }
 
     fn del_impl<KV: FromRedisValue>(&self, key: &String) -> Result<KV> {
-        self.connection.write()?.del(key.as_str()).map_err(|e| Error::from(e))
+        self.connection
+            .write()?
+            .del(key.as_str())
+            .map_err(|e| Error::from(e))
     }
 
-    fn sadd_impl<T: ToRedisArgs,KV: FromRedisValue>(&self, key: &String, value: T) -> Result<KV> {
-        self.connection.write()?.sadd(key.as_str(), value).map_err(|e| Error::from(e))
+    fn sadd_impl<T: ToRedisArgs, KV: FromRedisValue>(&self, key: &String, value: T) -> Result<KV> {
+        self.connection
+            .write()?
+            .sadd(key.as_str(), value)
+            .map_err(|e| Error::from(e))
     }
 
-    fn sismember_impl<T: ToRedisArgs, KV: FromRedisValue>(&self, key: &String, value: T) -> Result<KV> {
-        self.connection.write()?.sismember(key.as_str(), value).map_err(|e| Error::from(e))
+    fn sismember_impl<T: ToRedisArgs, KV: FromRedisValue>(
+        &self,
+        key: &String,
+        value: T,
+    ) -> Result<KV> {
+        self.connection
+            .write()?
+            .sismember(key.as_str(), value)
+            .map_err(|e| Error::from(e))
     }
 
     fn srem_impl<T: ToRedisArgs, KV: FromRedisValue>(&self, key: &String, value: T) -> Result<KV> {
-        self.connection.write()?.srem(key.as_str(), value).map_err(|e| Error::from(e))
+        self.connection
+            .write()?
+            .srem(key.as_str(), value)
+            .map_err(|e| Error::from(e))
     }
 
     fn smembers_impl<KV: FromRedisValue>(&self, key: &String) -> Result<KV> {
-        self.connection.write()?.smembers(key.as_str()).map_err(|e| Error::from(e))
+        self.connection
+            .write()?
+            .smembers(key.as_str())
+            .map_err(|e| Error::from(e))
     }
-    
+
+    fn hkeys_impl<KV: FromRedisValue>(&self, key: &String) -> Result<KV> {
+        self.connection
+            .write()?
+            .hkeys(key.as_str())
+            .map_err(|e| Error::from(e))
+    }
+
+    fn hgetall_impl<KV: FromRedisValue>(&self, key: &String) -> Result<KV> {
+        self.connection
+            .write()?
+            .hgetall(key.as_str())
+            .map_err(|e| Error::from(e))
+    }
+
+    fn hget_impl<KV: FromRedisValue>(&self, key: &String, field: &String) -> Result<KV> {
+        self.connection
+            .write()?
+            .hget(key.as_str(), field.as_str())
+            .map_err(|e| Error::from(e))
+    }
+
+    fn hset_impl<KV: ToRedisArgs, R: FromRedisValue>(
+        &self,
+        key: &String,
+        field: &String,
+        value: KV,
+    ) -> Result<R> {
+        self.connection
+            .write()?
+            .hset(key.as_str(), field.as_str(), value)
+            .map_err(|e| Error::from(e))
+    }
+
+    fn hdel_impl<R: FromRedisValue>(&self, key: &String, field: &String) -> Result<R> {
+        self.connection
+            .write()?
+            .hdel(key.as_str(), field.as_str())
+            .map_err(|e| Error::from(e))
+    }
+
     fn set<T: ToRedisArgs>(&self, key: &String, value: T) -> Result<bool> {
         let res = self.set_impl(key, value);
-        res.map_err(|e| {
-            Error::from(e)
-        })
+        res.map_err(|e| Error::from(e))
     }
 
     fn get<T: FromRedisValue>(&self, key: &String) -> Result<T> {
-        self.get_impl::<T>(key).map_err(|e|{
-            Error::from(e)
-        })
+        self.get_impl::<T>(key).map_err(|e| Error::from(e))
     }
 
     fn set_bin<T: Serialize>(&self, key: &String, value: &T) -> Result<bool> {
@@ -81,7 +143,8 @@ impl<Type: BaseStorage> RedisStorage<Type> {
     }
 
     fn get_bin<T>(&self, key: &String) -> Option<T>
-        where T: DeserializeOwned
+    where
+        T: DeserializeOwned,
     {
         let data = self.get::<Vec<u8>>(&key).ok()?;
 
@@ -107,7 +170,7 @@ impl<Type: BaseStorage> RedisStorage<Type> {
     fn sadd<T: ToRedisArgs>(&self, key: &String, value: T) -> Result<bool> {
         let res = self.sadd_impl::<T, u8>(key, value);
         if let Ok(res) = res {
-            return Ok(res == 1)
+            return Ok(res == 1);
         }
 
         Err(Error::from(res.unwrap_err()))
@@ -116,7 +179,7 @@ impl<Type: BaseStorage> RedisStorage<Type> {
     fn sismember<T: ToRedisArgs>(&self, key: &String, value: T) -> Result<bool> {
         let res = self.sismember_impl::<T, u8>(key, value);
         if let Ok(res) = res {
-            return Ok(res == 1)
+            return Ok(res == 1);
         }
 
         Err(Error::from(res.unwrap_err()))
@@ -125,7 +188,7 @@ impl<Type: BaseStorage> RedisStorage<Type> {
     fn srem<T: ToRedisArgs>(&self, key: &String, value: T) -> Result<bool> {
         let res = self.srem_impl::<T, u8>(key, value);
         if let Ok(res) = res {
-            return Ok(res == 1)
+            return Ok(res == 1);
         }
 
         Err(Error::from(res.unwrap_err()))
@@ -138,6 +201,31 @@ impl<Type: BaseStorage> RedisStorage<Type> {
         }
 
         Err(Error::from(res.err().unwrap()))
+    }
+
+    fn hkeys<KV: FromRedisValue>(&self, key: &String) -> Result<KV> {
+        self.hkeys_impl::<KV>(key)
+    }
+
+    fn hgetall<KV: FromRedisValue>(&self, key: &String) -> Result<KV> {
+        self.hgetall_impl::<KV>(key)
+    }
+
+    fn hget<KV: FromRedisValue>(&self, key: &String, field: &String) -> Result<KV> {
+        self.hget_impl::<KV>(key, field)
+    }
+
+    fn hset<KV: ToRedisArgs + FromRedisValue, R: FromRedisValue>(
+        &self,
+        key: &String,
+        field: &String,
+        value: KV,
+    ) -> Result<R> {
+        self.hset_impl::<KV, R>(key, field, value)
+    }
+
+    fn hdel<R: FromRedisValue>(&self, key: &String, field: &String) -> Result<R> {
+        self.hdel_impl(key, field)
     }
 }
 
@@ -159,7 +247,7 @@ impl RedisStorage<MainStorage> {
         None
     }
 
-    pub fn set_session(&self, user: &User) ->Result<bool> {
+    pub fn set_session(&self, user: &User) -> Result<bool> {
         let key = format!("SESSION:{}", user.username);
         let data = serde_cbor::to_vec(&user)?;
         self.set(&key, data)
@@ -191,7 +279,8 @@ impl RedisStorage<MainStorage> {
     pub fn create_login_request(&self, username: &String) -> String {
         let login_request = LoginRequest::new(username);
         let key = format!("LOGIN:{}", &login_request.code);
-        self.set(&key, serde_cbor::to_vec(&login_request).unwrap()).unwrap();
+        self.set(&key, serde_cbor::to_vec(&login_request).unwrap())
+            .unwrap();
         login_request.code
     }
 
@@ -204,7 +293,7 @@ impl RedisStorage<MainStorage> {
                 match self.del(&key) {
                     Err(e) => {
                         error!("Could not delete login request by key {}: {}", code, e);
-                    },
+                    }
                     _ => {}
                 }
 
@@ -214,20 +303,18 @@ impl RedisStorage<MainStorage> {
                             return request.into();
                         }
                         None
-                    },
+                    }
                     Err(e) => {
                         error!("Deserialization error: {}", e);
                         None
                     }
                 }
-
-            },
+            }
             Err(e) => {
                 error!("Could not get login request by code {}: {}", code, e);
                 None
             }
         }
-
     }
 
     pub fn create_attach_request(&self, username: &String) -> Result<String> {
@@ -242,18 +329,16 @@ impl RedisStorage<MainStorage> {
         let data = self.get::<Vec<u8>>(&key);
         self.del(&key).unwrap();
         match data {
-            Ok(data) => {
-                match serde_cbor::from_slice::<AttachRequest>(data.as_slice()) {
-                    Ok(req) => {
-                        if req.is_valid() {
-                            return Some(req.into())
-                        }
-                        error!("Trying to get invalid attach request");
-                        None
+            Ok(data) => match serde_cbor::from_slice::<AttachRequest>(data.as_slice()) {
+                Ok(req) => {
+                    if req.is_valid() {
+                        return Some(req.into());
                     }
-                    _ => None
+                    error!("Trying to get invalid attach request");
+                    None
                 }
-            }
+                _ => None,
+            },
             Err(e) => {
                 error!("Could not get an attach request with code {}: {}", code, e);
                 None
@@ -261,9 +346,17 @@ impl RedisStorage<MainStorage> {
         }
     }
 
-    pub fn set_mail_account(&self, username: &String, email: &String, password: &String) -> Result<bool> {
+    pub fn set_mail_account(
+        &self,
+        username: &String,
+        email: &String,
+        password: &String,
+    ) -> Result<bool> {
         let key = format!("ACCOUNT:{}", username);
-        let account = MailAccount{email: email.clone(), password: password.clone()};
+        let account = MailAccount {
+            email: email.clone(),
+            password: password.clone(),
+        };
         let encrypted_account: MailAccountEncrypted = account.into();
         self.set_bin(&key, &encrypted_account)
     }
@@ -296,7 +389,7 @@ impl RedisStorage<MainStorage> {
         for uid in uids {
             let res = self.sismember(&key, **uid);
             if res.is_err() {
-                return Err(res.unwrap_err())
+                return Err(res.unwrap_err());
             }
             if !res.unwrap() {
                 unprocessed.push(*uid.clone());
@@ -334,6 +427,22 @@ impl RedisStorage<MainStorage> {
     pub fn get_user_avatar(&self, username: &String) -> Result<String> {
         let key = format!("AVATAR:{}", username);
         self.get::<String>(&key)
+    }
+
+    pub fn get_send_message_tasks_queue(&self) -> Result<BTreeMap<String, TelegramMessageTask>> {
+        let key = format!("TELEGRAM_MESSAGE_QUEUE");
+        self.hgetall(&key)
+    }
+
+    pub fn add_send_message_task_to_queue(&self, task: TelegramMessageTask) -> Result<bool> {
+        let key = format!("TELEGRAM_MESSAGE_QUEUE");
+        let field = uuid::Uuid::new_v4().to_string();
+        self.hset(&key, &field, task)
+    }
+
+    pub fn remove_send_message_task_from_queue(&self, id: &String) -> Result<bool> {
+        let key = format!("TELEGRAM_MESSAGE_QUEUE");
+        self.hdel(&key, id)
     }
 }
 

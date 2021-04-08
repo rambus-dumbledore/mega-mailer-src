@@ -1,0 +1,5 @@
+FROM builder:latest as builder
+
+FROM scratch
+COPY --from=builder /build/target/release/mail_checker /opt/mega-mailer/mail_checker
+COPY config.yaml /opt/mega-mailer

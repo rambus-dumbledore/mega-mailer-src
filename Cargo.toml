@@ -32,10 +32,23 @@ schedule = { git = "http://gogs.ddosya.ml/ramb/shedule-rs.git" }
 rustyknife = "0.2"
 reqwest = { version = "0.11", default-features = false, features = ["rustls-tls"] }
 uuid = "0.8"
+ctrlc = "3.1"
 
 [patch.crates-io]
 teloxide-core = { git = "https://github.com/teloxide/teloxide-core" }
 
+[lib]
+name = "common"
+path = "src/lib/lib.rs"
+
 [[bin]]
-name = "mega_mailer"
+name = "web_server"
 path = "src/main.rs"
+
+[[bin]]
+name = "mail_checker"
+path = "src/mail_checker/main.rs"
+
+[[bin]]
+name = "telegram_bot"
+path = "src/bot/main.rs"

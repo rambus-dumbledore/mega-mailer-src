@@ -1,27 +1,27 @@
-use hmac::{ Hmac, NewMac };
+use hmac::{Hmac, NewMac};
 use jwt::{SignWithKey, VerifyWithKey};
 use sha2::Sha256;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use rocket::http::{Cookie, SameSite, CookieJar};
+use rocket::http::{Cookie, CookieJar, SameSite};
 use rocket::request::{FromRequest, Outcome};
 use rocket::{Request, State};
 
-use crate::storage::{User, Storage};
-use crate::types::*;
 use crate::cfg::CONFIG;
+use crate::storage::{Storage, User};
+use crate::types::*;
 
 const COOKIE_NAME: &str = "mega_mailer_secret";
 
 pub struct SessionKeystore {
-    pub key: Hmac<Sha256>
+    pub key: Hmac<Sha256>,
 }
 
 impl SessionKeystore {
     pub fn new() -> SessionKeystore {
         SessionKeystore {
-            key: Hmac::new_varkey(CONFIG.get::<String>("web.cookie_key").as_bytes()).unwrap()
+            key: Hmac::new_varkey(CONFIG.get::<String>("web.cookie_key").as_bytes()).unwrap(),
         }
     }
 }
@@ -29,15 +29,19 @@ impl SessionKeystore {
 pub struct SessionManager<'a> {
     cookies: &'a CookieJar<'a>,
     keystore: State<'a, SessionKeystore>,
-    storage: State<'a, Arc<Storage>>
+    storage: State<'a, Arc<Storage>>,
 }
 
 impl SessionManager<'_> {
-    pub fn new<'a>(cookies: &'a CookieJar<'a>, keystore: State<'a, SessionKeystore>, storage: State<'a, Arc<Storage>>) -> SessionManager<'a> {
-        SessionManager{
+    pub fn new<'a>(
+        cookies: &'a CookieJar<'a>,
+        keystore: State<'a, SessionKeystore>,
+        storage: State<'a, Arc<Storage>>,
+    ) -> SessionManager<'a> {
+        SessionManager {
             cookies,
             keystore,
-            storage
+            storage,
         }
     }
 
@@ -49,23 +53,23 @@ impl SessionManager<'_> {
 
         let login_request = self.storage.get_login_request(code);
         if login_request.is_none() {
-            return Err(Error::AuthorizationError(AuthError::AuthCodeInvalid))
+            return Err(Error::AuthorizationError(AuthError::AuthCodeInvalid));
         }
 
         let mut claims = BTreeMap::new();
         claims.insert("username", user_name);
         let cookie = SignWithKey::sign_with_key(claims, &self.keystore.key).unwrap();
 
-        let user = User{
+        let user = User {
             username: user_name.clone(),
-            photo: None
+            photo: None,
         };
 
         self.storage.set_session(&user)?;
         self.cookies.add(
             Cookie::build(COOKIE_NAME, cookie)
                 .same_site(SameSite::Lax)
-                .finish()
+                .finish(),
         );
 
         Ok(())
@@ -75,20 +79,23 @@ impl SessionManager<'_> {
         let cookie = self.cookies.get(COOKIE_NAME);
         if let Some(cookie) = cookie {
             let token = cookie.value();
-            let result = VerifyWithKey::<BTreeMap<String, String>>::verify_with_key(token, &self.keystore.key);
+            let result = VerifyWithKey::<BTreeMap<String, String>>::verify_with_key(
+                token,
+                &self.keystore.key,
+            );
             if let Ok(tree) = result {
-                return Some(tree)
+                return Some(tree);
             }
-            return None
+            return None;
         }
-        return None
+        return None;
     }
 
     pub fn is_authorized(&mut self) -> bool {
         if let Some(_) = self.get_tree() {
-            return true
+            return true;
         }
-        return false
+        return false;
     }
 
     pub fn get_user(&mut self) -> Option<User> {
@@ -100,9 +107,9 @@ impl SessionManager<'_> {
                 if let Ok(photo) = self.storage.get_user_avatar(&username) {
                     user.photo = Some(format!("/assets/{}", photo));
                 }
-                return Some(user)
+                return Some(user);
             }
-            return None
+            return None;
         }
         None
     }
@@ -114,7 +121,7 @@ impl SessionManager<'_> {
                 let username = tree.get("username").unwrap().clone();
                 self.storage.remove_session(&username);
                 self.cookies.remove(Cookie::named(COOKIE_NAME));
-            },
+            }
             _ => {}
         }
     }
@@ -128,7 +135,10 @@ impl<'r> FromRequest<'r> for SessionManager<'r> {
         let keystore = request.guard::<State<SessionKeystore>>().await.unwrap();
         let cookies = request.cookies();
         let storage = request.guard::<State<Arc<Storage>>>().await.unwrap();
-        Outcome::Success(SessionManager{ keystore, cookies, storage })
+        Outcome::Success(SessionManager {
+            keystore,
+            cookies,
+            storage,
+        })
     }
 }
-

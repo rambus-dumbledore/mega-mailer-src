@@ -1,6 +1,6 @@
 use rand;
 use rand::Rng;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct AttachRequest {
@@ -18,7 +18,7 @@ impl AttachRequest {
         AttachRequest {
             code,
             username,
-            expires
+            expires,
         }
     }
 

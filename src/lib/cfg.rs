@@ -1,6 +1,6 @@
-use config::{Config, File, Environment};
+use config::{Config, Environment, File};
 use lazy_static::lazy_static;
-use log::{trace, error};
+use log::{error, trace};
 use serde::Deserialize;
 use std::fmt::Display;
 
@@ -8,13 +8,15 @@ pub struct Cfg(Config);
 
 impl Cfg {
     pub fn get<'de, T>(&self, key: &str) -> T
-    where T: Display + Deserialize<'de>
+    where
+        T: Display + Deserialize<'de>,
     {
         self.get_or_default(key, None)
     }
 
     pub fn get_or_default<'de, T>(&self, key: &str, default: Option<T>) -> T
-    where T: Display + Deserialize<'de>
+    where
+        T: Display + Deserialize<'de>,
     {
         trace!(target: "Config", "trying access to config with key \"{}\"", key);
         let res = self.0.get::<T>(key);
@@ -37,11 +39,13 @@ impl Cfg {
 fn build_config() -> Cfg {
     let mut settings = Config::default();
     settings
-        .merge(File::with_name("config")).unwrap()
-        .merge(Environment::with_prefix("APP")).unwrap();
+        .merge(File::with_name("config"))
+        .unwrap()
+        .merge(Environment::with_prefix("APP"))
+        .unwrap();
     Cfg(settings)
 }
 
-lazy_static!{
+lazy_static! {
     pub static ref CONFIG: Cfg = build_config();
 }

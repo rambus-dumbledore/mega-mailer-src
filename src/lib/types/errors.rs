@@ -1,11 +1,11 @@
-use thiserror::Error;
-use redis::{RedisError, Connection};
+use redis::{Connection, RedisError};
+use rocket;
 use rocket::response::Responder;
+use rustls_connector;
+use serde_cbor;
 use serde_json::json;
 use std::io::Cursor;
-use rocket;
-use serde_cbor;
-use rustls_connector;
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum AuthError {
@@ -24,7 +24,7 @@ pub enum NetworkError {
     #[error("Handshake error: {0}")]
     HandshakeError(rustls_connector::HandshakeError<std::net::TcpStream>),
     #[error("Reqwest error: {0}")]
-    ReqwestError(reqwest::Error)
+    ReqwestError(reqwest::Error),
 }
 
 #[derive(Error, Debug)]
@@ -48,7 +48,9 @@ pub enum TelegramBotError {
 #[derive(Error, Debug)]
 pub enum InternalError {
     #[error("RWLockPoisoned error: {0}")]
-    RWLockPoisonedError(String)
+    RWLockPoisonedError(String),
+    #[error("Runtime error: {0}")]
+    RuntimeError(String),
 }
 
 #[derive(Error, Debug)]
@@ -72,14 +74,12 @@ pub enum Error {
     #[error("MailChecker error: {0}")]
     MailCheckerError(MailCheckerError),
     #[error("Internal error: {0}")]
-    InternalError(InternalError)
+    InternalError(InternalError),
 }
 
 impl<'r> Responder<'r, 'static> for Error {
     fn respond_to(self, _: &'r rocket::Request<'_>) -> rocket::response::Result<'static> {
-        let response = json!({
-            "error": format!("{}", self)
-        }).to_string();
+        let response = json!({ "error": format!("{}", self) }).to_string();
 
         rocket::response::Response::build()
             .sized_body(response.len(), Cursor::new(response))
@@ -137,7 +137,9 @@ impl std::convert::From<reqwest::Error> for Error {
     }
 }
 
-impl std::convert::From<std::sync::PoisonError<std::sync::RwLockWriteGuard<'_, redis::Connection>>> for Error {
+impl std::convert::From<std::sync::PoisonError<std::sync::RwLockWriteGuard<'_, redis::Connection>>>
+    for Error
+{
     fn from(e: std::sync::PoisonError<std::sync::RwLockWriteGuard<'_, Connection>>) -> Self {
         let error = format!("{}", e);
         Error::InternalError(InternalError::RWLockPoisonedError(error))

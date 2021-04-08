@@ -1,6 +1,6 @@
-use lazy_static::lazy_static;
-use block_modes::{BlockMode, Cbc, block_padding::Pkcs7};
 use aes::Aes128;
+use block_modes::{block_padding::Pkcs7, BlockMode, Cbc};
+use lazy_static::lazy_static;
 
 use crate::cfg::CONFIG;
 
@@ -11,7 +11,7 @@ pub struct Cipher {
     iv: String,
 }
 
-lazy_static!{
+lazy_static! {
     pub static ref CIPHER: Cipher = Cipher::new();
 }
 
@@ -23,7 +23,7 @@ impl Cipher {
     pub fn new() -> Cipher {
         let key = CONFIG.get::<String>("storage.key");
         let iv = CONFIG.get::<String>("storage.iv");
-        Cipher{ key, iv }
+        Cipher { key, iv }
     }
 
     pub fn encrypt(&self, data: &[u8]) -> Vec<u8> {

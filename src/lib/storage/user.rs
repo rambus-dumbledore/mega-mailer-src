@@ -1,10 +1,10 @@
-use serde::{Serialize, Deserialize};
-use rocket::{Request, State};
-use std::sync::Arc;
-use rocket::request::{FromRequest, Outcome};
 use rocket::http::Status;
+use rocket::request::{FromRequest, Outcome};
+use rocket::{Request, State};
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::web::{SessionManager, SessionKeystore};
+use crate::sessions::{SessionKeystore, SessionManager};
 use crate::storage::Storage;
 
 #[derive(Serialize, Deserialize)]

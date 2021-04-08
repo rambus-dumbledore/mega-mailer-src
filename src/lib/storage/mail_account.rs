@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::storage::CIPHER;
 
@@ -17,9 +17,9 @@ pub struct MailAccountEncrypted {
 impl std::convert::From<MailAccount> for MailAccountEncrypted {
     fn from(account: MailAccount) -> Self {
         let enc_pwd = CIPHER.encrypt(account.password.as_bytes());
-        MailAccountEncrypted{
+        MailAccountEncrypted {
             email: account.email,
-            password: enc_pwd
+            password: enc_pwd,
         }
     }
 }
@@ -27,9 +27,9 @@ impl std::convert::From<MailAccount> for MailAccountEncrypted {
 impl std::convert::From<MailAccountEncrypted> for MailAccount {
     fn from(account: MailAccountEncrypted) -> Self {
         let dec_pwd = CIPHER.decrypt(account.password.as_slice());
-        MailAccount{
+        MailAccount {
             email: account.email,
-            password: String::from_utf8(dec_pwd).unwrap()
+            password: String::from_utf8(dec_pwd).unwrap(),
         }
     }
 }
