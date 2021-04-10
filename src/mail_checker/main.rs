@@ -4,9 +4,9 @@ use ctrlc;
 use log::error;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use pretty_env_logger;
 
 use checker::Checker;
-use common::types::InternalError::RuntimeError;
 use common::types::*;
 
 fn main_impl() -> Result<()> {
@@ -17,7 +17,7 @@ fn main_impl() -> Result<()> {
         r.store(false, Ordering::SeqCst);
     })
     .map_err(|e| {
-        Error::InternalError(RuntimeError(format!("Error setting signal handler: {}", e)))
+        Error::InternalError(InternalError::RuntimeError(format!("Error setting signal handler: {}", e)))
     })?;
 
     let mut agenda = schedule::Agenda::new();
@@ -37,6 +37,8 @@ fn main_impl() -> Result<()> {
 }
 
 fn main() {
+    pretty_env_logger::init();
+
     match main_impl() {
         Ok(_) => {}
         Err(e) => {

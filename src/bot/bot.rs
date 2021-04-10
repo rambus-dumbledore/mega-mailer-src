@@ -1,6 +1,5 @@
 use log::error;
 use std::sync::Arc;
-use std::sync::Once;
 use teloxide::types::ParseMode::MarkdownV2;
 use teloxide::{prelude::*, utils::command::BotCommand};
 use tokio;
@@ -10,11 +9,13 @@ use common::storage::Storage;
 use common::types::Error;
 
 use super::handlers;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Clone)]
 pub struct TelegramBot {
     bot: Bot,
     storage: Arc<Storage>,
+    running: Arc<AtomicBool>,
 }
 
 #[derive(BotCommand)]
@@ -29,11 +30,11 @@ enum Command {
 }
 
 impl TelegramBot {
-    pub fn new(storage: Arc<Storage>) -> TelegramBot {
+    pub fn new(storage: Arc<Storage>, running: Arc<AtomicBool>) -> TelegramBot {
         let token = CONFIG.get::<String>("bot.secret");
         let bot = Bot::new(token);
 
-        TelegramBot { bot, storage }
+        TelegramBot { bot, storage, running }
     }
 
     pub fn start_listener_thread(&self) {
@@ -68,6 +69,10 @@ impl TelegramBot {
                         };
                     }
                 };
+            }
+
+            if !self.running.load(Ordering::Relaxed) {
+                break;
             }
 
             std::thread::sleep(std::time::Duration::from_secs(1));
