@@ -444,6 +444,16 @@ impl RedisStorage<MainStorage> {
         let key = format!("TELEGRAM_MESSAGE_QUEUE");
         self.hdel(&key, id)
     }
+
+    pub fn get_user_working_hours(&self, username: &String) -> Option<Vec<u8>> {
+        let key = format!("WORKING_HOURS:{}", username);
+        self.get_bin(&key)
+    }
+    
+    pub fn set_user_working_hours(&self, username: &String, wh: &Vec<u8>) -> Result<bool> {
+        let key = format!("WORKING_HOURS:{}", username);
+        self.set_bin(&key, wh)
+    }
 }
 
 pub type Storage = RedisStorage<MainStorage>;

@@ -3,7 +3,9 @@ use rocket;
 use rocket::{get, response::Redirect, routes};
 use rocket_contrib::serve::StaticFiles;
 
-use crate::web::*;
+use crate::account_handlers::account_routes;
+use crate::auth_handlers::auth_routes;
+use crate::notify_settings_handlers::notify_settings_routes;
 
 #[get("/")]
 fn index() -> Redirect {
@@ -16,6 +18,7 @@ pub async fn init_server_instance() -> rocket::Rocket {
         .merge(("port", CONFIG.get::<u32>("web.port")));
     rocket::custom(figment)
         .mount("/api", account_routes())
+        .mount("/api", notify_settings_routes())
         .mount("/", auth_routes())
         .mount(
             "/assets",

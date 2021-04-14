@@ -6,6 +6,17 @@ use serde_cbor;
 pub struct TelegramMessageTask {
     pub to: String,
     pub text: String,
+    pub send_after: chrono::DateTime<chrono::Utc>,
+}
+
+impl TelegramMessageTask {
+    pub fn can_send_now(&self) -> bool {
+        let now = chrono::Utc::now();
+        if now > self.send_after {
+            return true;
+        }
+        false
+    }
 }
 
 impl ToRedisArgs for TelegramMessageTask {

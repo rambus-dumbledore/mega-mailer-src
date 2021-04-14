@@ -6,6 +6,7 @@ use rustyknife::rfc2047::encoded_word;
 use std::iter::FromIterator;
 use std::net::TcpStream;
 use teloxide::utils::markdown::escape;
+use chrono::{Timelike, DateTime, Utc, TimeZone, Duration};
 
 use common::cfg::CONFIG;
 use common::storage::{MailAccount, Storage};
@@ -81,7 +82,7 @@ impl Checker {
         );
 
         let subject = subject.unwrap_or("No subject".into());
-        let notify = if let Some(from) = from {
+        let text = if let Some(from) = from {
             format!(
                 "*{}*\n{}\n{}",
                 escape(from.as_str()),
@@ -92,9 +93,29 @@ impl Checker {
             format!("*{}*\n{}", escape(email.as_str()), escape(subject.as_str()))
         };
 
+        let work_hours =  STORAGE.get_user_working_hours(&username);
+        let send_after = if let Some(work_hours) = work_hours {
+            let moscow_offset = chrono::FixedOffset::east(3 * 3600);
+            let now = chrono::Utc::now().with_timezone(&moscow_offset);
+            let mut send_after: DateTime<Utc> = DateTime::from(now);
+            if (now.hour() as u8) < work_hours[0]  {
+                let naive = now.naive_utc().date();
+                send_after = Utc.from_utc_date(&naive)
+                    .and_hms(work_hours[0] as u32, 0, 0) - Duration::hours(3);
+            } else if (now.hour() as u8) >= work_hours[1] {
+                let naive = now.naive_utc().date();
+                send_after = (Utc.from_utc_date(&naive) + Duration::days(1))
+                    .and_hms(work_hours[0] as u32, 0, 0) - Duration::hours(3);
+            }
+            send_after
+        } else {
+            chrono::Utc::now()
+        };
+
         let task = TelegramMessageTask {
             to: username.clone(),
-            text: notify,
+            text,
+            send_after
         };
         if let Err(e) = STORAGE.add_send_message_task_to_queue(task) {
             error!("{}", e);

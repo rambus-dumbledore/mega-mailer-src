@@ -1,7 +1,10 @@
 #![feature(type_alias_impl_trait)]
 #![feature(backtrace)]
 
-mod web;
+mod account_handlers;
+mod auth_handlers;
+mod server;
+mod notify_settings_handlers;
 
 use log::error;
 use pretty_env_logger;
@@ -9,6 +12,8 @@ use std::sync::Arc;
 
 use common::sessions::SessionKeystore;
 use common::storage::Storage;
+
+use server::init_server_instance;
 
 fn main() {
     pretty_env_logger::init();
@@ -24,7 +29,7 @@ fn main() {
         }
         let storage = Arc::new(storage.unwrap());
 
-        let instance = web::init_server_instance()
+        let instance = init_server_instance()
             .await
             .manage(storage)
             .manage(session_keystore);

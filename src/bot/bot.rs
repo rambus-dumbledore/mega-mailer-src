@@ -3,13 +3,13 @@ use std::sync::Arc;
 use teloxide::types::ParseMode::MarkdownV2;
 use teloxide::{prelude::*, utils::command::BotCommand};
 use tokio;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use common::cfg::CONFIG;
 use common::storage::Storage;
-use common::types::Error;
+use common::types::{Error};
 
 use super::handlers;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Clone)]
 pub struct TelegramBot {
@@ -56,6 +56,10 @@ impl TelegramBot {
                 .get_send_message_tasks_queue()
                 .expect("Could not fetch message queue");
             for (ref key, ref task) in queue {
+                if !task.can_send_now() {
+                    continue;
+                }
+
                 match self.send_markdown(&task.to, &task.text).await {
                     Err(e) => {
                         error!("{}", e);
@@ -75,7 +79,7 @@ impl TelegramBot {
                 break;
             }
 
-            std::thread::sleep(std::time::Duration::from_secs(1));
+            std::thread::sleep(std::time::Duration::from_secs(10));
         }
     }
 
@@ -92,15 +96,6 @@ impl TelegramBot {
             Command::SetAvatar => handlers::process_set_avatar_command(cx, &storage).await?,
         };
 
-        Ok(())
-    }
-
-    pub async fn send_login_code(&self, chat_id: String, username: &String) -> Result<(), Error> {
-        let code = self.storage.create_login_request(username);
-        self.bot
-            .send_message(chat_id, format!("Your login code: {}", code))
-            .send()
-            .await?;
         Ok(())
     }
 
