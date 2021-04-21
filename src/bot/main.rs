@@ -33,6 +33,7 @@ fn main() {
     tokio::runtime::Runtime::new()
         .expect("Could not initialize asynchronous runtime")
         .block_on(async move {
+        teloxide::enable_logging!();
         match main_impl().await {
             Ok(_) => {}
             Err(e) => {

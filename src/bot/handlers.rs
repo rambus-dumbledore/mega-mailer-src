@@ -1,15 +1,16 @@
 use std::sync::Arc;
-use teloxide::prelude::*;
+use teloxide::prelude::{*, Message as TelegramMessage};
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 
 use common::cfg::CONFIG;
 use common::storage::Storage;
 use common::types::Error;
+use crate::bot::TelegramBot;
 
 pub async fn process_set_avatar_command(
-    cx: UpdateWithCx<Bot, Message>,
-    storage: &Arc<Storage>,
+    cx: UpdateWithCx<Bot, TelegramMessage>,
+    storage: Arc<Storage>,
 ) -> Result<(), Error> {
     let username = storage.get_username(&cx.chat_id().to_string());
     if let Err(_) = username {
@@ -46,8 +47,8 @@ pub async fn process_set_avatar_command(
 }
 
 pub async fn process_attach_command(
-    cx: UpdateWithCx<Bot, Message>,
-    storage: &Arc<Storage>,
+    cx: UpdateWithCx<Bot, TelegramMessage>,
+    storage: Arc<Storage>,
     code: &String,
 ) -> Result<(), Error> {
     let request = storage.get_attach_request(code);
@@ -60,5 +61,20 @@ pub async fn process_attach_command(
         }
     }
     cx.answer("Invalid code").send();
+    Ok(())
+}
+
+pub async fn process_fetch_all_emails(
+    cx: UpdateWithCx<Bot, TelegramMessage>,
+    storage: Arc<Storage>,
+) -> Result<(), Error> {
+    let chat_id = cx.chat_id().to_string();
+    let username = storage.get_username(&chat_id)?;
+    let queue = storage.get_send_message_tasks_queue()?;
+    for (ref key, ref task) in queue {
+        if task.to != username { continue; }
+        TelegramBot::send_markdown(&cx.requester, &storage, &username, &task.text).await?;
+        storage.remove_send_message_task_from_queue(key)?;
+    }
     Ok(())
 }

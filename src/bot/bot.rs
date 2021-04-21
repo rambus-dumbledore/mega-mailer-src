@@ -1,13 +1,14 @@
-use log::error;
+use log::{error, debug};
 use std::sync::Arc;
 use teloxide::types::ParseMode::MarkdownV2;
-use teloxide::{prelude::*, utils::command::BotCommand};
+use teloxide::{prelude::*};
 use tokio;
 use std::sync::atomic::{AtomicBool, Ordering};
+use teloxide::types::{KeyboardMarkup, KeyboardButton, Message as TelegramMessage, MessageKind, MediaKind};
 
 use common::cfg::CONFIG;
 use common::storage::Storage;
-use common::types::{Error};
+use common::types::{Error,};
 
 use super::handlers;
 
@@ -18,15 +19,47 @@ pub struct TelegramBot {
     running: Arc<AtomicBool>,
 }
 
-#[derive(BotCommand)]
-#[command(rename = "lowercase", description = "These commands are supported:")]
-enum Command {
-    #[command(description = "display this text.")]
-    Help,
-    #[command(description = "attach telegram account to user account")]
-    Attach(String),
-    #[command(description = "set account avatar from telegram")]
-    SetAvatar,
+enum RawMessage {
+    FetchAllMailRequest,
+    Other(String),
+}
+
+enum Message {
+    AttachRequest(String),
+    SetAvatarRequest,
+    RawMessage(RawMessage)
+}
+
+fn parse_text(text: &String) -> Option<Message> {
+    let res = teloxide::utils::command::parse_command(text.as_str(), "");
+    return if let Some((cmd, args)) = res {
+        match cmd {
+            "attach" => Some(Message::AttachRequest(args[0].into())),
+            "set_avatar" => Some(Message::SetAvatarRequest),
+            _ => None
+        }
+    } else {
+        match text.as_str() {
+            "Fetch all emails" => {
+                Some(Message::RawMessage(RawMessage::FetchAllMailRequest))
+            },
+            _ => Some(Message::RawMessage(RawMessage::Other(text.clone())))
+        }
+    }
+}
+
+fn parse_update(update: &TelegramMessage) -> Option<Message> {
+    return match update.kind {
+        MessageKind::Common(ref msg) => {
+            match msg.media_kind {
+                MediaKind::Text(ref text) => {
+                    parse_text(&text.text)
+                },
+                _ => None
+            }
+        },
+        _ => None
+    }
 }
 
 impl TelegramBot {
@@ -41,11 +74,21 @@ impl TelegramBot {
         let b = self.bot.clone();
         let s = self.storage.clone();
 
+        let closure = move |msg: UpdateWithCx<Bot, TelegramMessage>| {
+            let storage = s.clone();
+            async move {
+                if let Some(message) = parse_update(&msg.update) {
+                    match TelegramBot::answer(msg, message, &storage).await {
+                        Err(e) => error!("Could not answer request: {}", e),
+                        _ => {}
+                    }
+                }
+                respond(())
+            }
+        };
+
         tokio::spawn(async move {
-            teloxide::commands_repl(b, "MegaMailerBot", move |cx, command| {
-                TelegramBot::answer(cx, command, Arc::clone(&s))
-            })
-            .await;
+            teloxide::repl(b, closure).await;
         });
     }
 
@@ -60,7 +103,7 @@ impl TelegramBot {
                     continue;
                 }
 
-                match self.send_markdown(&task.to, &task.text).await {
+                match TelegramBot::send_markdown(&self.bot, &self.storage, &task.to, &task.text).await {
                     Err(e) => {
                         error!("{}", e);
                     }
@@ -84,26 +127,37 @@ impl TelegramBot {
     }
 
     async fn answer(
-        cx: UpdateWithCx<Bot, Message>,
-        command: Command,
-        storage: Arc<Storage>,
+        cx: UpdateWithCx<Bot, TelegramMessage>,
+        message: Message,
+        storage: &Arc<Storage>,
     ) -> Result<(), Error> {
-        match command {
-            Command::Help => {
-                cx.answer(Command::descriptions()).send();
+        let storage = storage.clone();
+        match message {
+            Message::AttachRequest(code) => handlers::process_attach_command(cx, storage, &code).await?,
+            Message::SetAvatarRequest => handlers::process_set_avatar_command(cx, storage).await?,
+            Message::RawMessage(msg) => {
+                match msg {
+                    RawMessage::FetchAllMailRequest => handlers::process_fetch_all_emails(cx, storage).await?,
+                    RawMessage::Other(raw_message) => debug!("Could not process message '{}'", raw_message)
+                }
             }
-            Command::Attach(code) => handlers::process_attach_command(cx, &storage, &code).await?,
-            Command::SetAvatar => handlers::process_set_avatar_command(cx, &storage).await?,
         };
 
         Ok(())
     }
 
-    pub async fn send_markdown(&self, username: &String, text: &String) -> Result<(), Error> {
-        let chat_id = self.storage.get_telegram_id(username)?;
-        self.bot
+    pub async fn send_markdown(bot: &Bot, storage: &Arc<Storage>, username: &String, text: &String) -> Result<(), Error> {
+        let chat_id = storage.get_telegram_id(username)?;
+        let reply_markup = KeyboardMarkup::new(vec![vec![
+            KeyboardButton{
+                text: "Fetch all emails".into(),
+                request: None
+            }
+        ]]).resize_keyboard(true);
+        bot
             .send_message(chat_id, text)
             .parse_mode(MarkdownV2)
+            .reply_markup(reply_markup)
             .send()
             .await?;
         Ok(())
