@@ -1,6 +1,6 @@
 use common::cfg::CONFIG;
 use rocket;
-use rocket::{get, response::Redirect, routes};
+use rocket::{get, response::Redirect, routes, Build, Rocket};
 use rocket_contrib::serve::StaticFiles;
 
 use crate::account_handlers::account_routes;
@@ -12,7 +12,7 @@ fn index() -> Redirect {
     Redirect::found("/static/index.html")
 }
 
-pub async fn init_server_instance() -> rocket::Rocket {
+pub async fn init_server_instance() -> Rocket<Build> {
     let figment = rocket::Config::figment()
         .merge(("address", CONFIG.get::<String>("web.address")))
         .merge(("port", CONFIG.get::<u32>("web.port")));
