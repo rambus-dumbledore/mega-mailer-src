@@ -2,6 +2,7 @@ use std::sync::Arc;
 use teloxide::prelude::{*, Message as TelegramMessage};
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
+use std::collections::BTreeMap;
 
 use common::cfg::CONFIG;
 use common::storage::Storage;
@@ -71,10 +72,17 @@ pub async fn process_fetch_all_emails(
     let chat_id = cx.chat_id().to_string();
     let username = storage.get_username(&chat_id)?;
     let queue = storage.get_send_message_tasks_queue()?;
-    for (ref key, ref task) in queue {
-        if task.to != username { continue; }
-        TelegramBot::send_markdown(&cx.requester, &storage, &username, &task.text).await?;
-        storage.remove_send_message_task_from_queue(key)?;
+    let queue = queue.iter().filter(|(ref _key, ref task)| task.to == username ).collect::<BTreeMap<_,_>>();
+
+    if queue.len() == 0 {
+        TelegramBot::send_markdown(
+            &cx.requester, &storage, &username, &String::from("There are no messages for you now")).await?;
+    } else {
+        for (ref key, ref task) in queue {
+            if task.to != username { continue; }
+            TelegramBot::send_markdown(&cx.requester, &storage, &username, &task.text).await?;
+            storage.remove_send_message_task_from_queue(key)?;
+        }
     }
     Ok(())
 }
