@@ -10,7 +10,7 @@ use chrono::{Timelike, DateTime, Utc, TimeZone, Duration};
 
 use common::cfg::CONFIG;
 use common::storage::{MailAccount, Storage};
-use common::types::{Error, MailCheckerError, Result, TelegramMessageTask};
+use common::types::{Error, MailCheckerError, Result, TelegramMessageTask, ImportanceChecker};
 
 lazy_static! {
     static ref STORAGE: Storage = Storage::new().unwrap();
@@ -51,7 +51,7 @@ impl Checker {
         None
     }
 
-    fn process_message(message: &imap::types::Fetch, username: &String) {
+    fn process_message(message: &imap::types::Fetch, username: &String, importance_checker: &ImportanceChecker) {
         let envelope = message.envelope();
         if let None = envelope {
             let error = Error::MailCheckerError(MailCheckerError::EmptyEnvelope);
@@ -115,7 +115,8 @@ impl Checker {
         let task = TelegramMessageTask {
             to: username.clone(),
             text,
-            send_after
+            send_after,
+            important: importance_checker.check(&email),
         };
         if let Err(e) = STORAGE.add_send_message_task_to_queue(task) {
             error!("{}", e);
@@ -141,6 +142,9 @@ impl Checker {
             }
         };
 
+        let importance_checker = ImportanceChecker::new(&*STORAGE, username);
+        debug!("ImportanceChecker for user {} was built: {:?}", username, importance_checker);
+
         let folders = session.list(None, Some("INBOX*")).unwrap();
         for folder in folders.iter() {
             let _mailbox = session.select(folder.name()).unwrap();
@@ -163,7 +167,7 @@ impl Checker {
 
             let fetched = session.fetch(to_fetch, "ENVELOPE").unwrap();
             for message in fetched.iter() {
-                Checker::process_message(message, username);
+                Checker::process_message(message, username, &importance_checker);
             }
 
             STORAGE

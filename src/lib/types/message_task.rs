@@ -7,6 +7,7 @@ pub struct TelegramMessageTask {
     pub to: String,
     pub text: String,
     pub send_after: chrono::DateTime<chrono::Utc>,
+    pub important: bool,
 }
 
 impl TelegramMessageTask {
