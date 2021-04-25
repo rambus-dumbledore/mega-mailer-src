@@ -35,7 +35,9 @@ async fn login_code(storage: State<'_, Arc<Storage>>, params: Json<CodeParams>) 
         let text = format!("Your login code: {}", code);
         let to = params.username.clone();
 
-        storage.add_send_message_task_to_queue(TelegramMessageTask { to, text, send_after: chrono::Utc::now() })?;
+        storage.add_send_message_task_to_queue(
+            TelegramMessageTask { to, text, send_after: chrono::Utc::now(), important: true }
+        )?;
     } else {
         return Err(Error::AuthorizationError(AuthError::UserNotRegistered));
     }

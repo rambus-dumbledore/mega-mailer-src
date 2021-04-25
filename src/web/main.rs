@@ -5,6 +5,7 @@ mod account_handlers;
 mod auth_handlers;
 mod server;
 mod notify_settings_handlers;
+mod importance_settings_handlers;
 
 use log::error;
 use pretty_env_logger;

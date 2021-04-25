@@ -99,7 +99,7 @@ impl TelegramBot {
                 .get_send_message_tasks_queue()
                 .expect("Could not fetch message queue");
             for (ref key, ref task) in queue {
-                if !task.can_send_now() {
+                if !task.important && !task.can_send_now() {
                     continue;
                 }
 
