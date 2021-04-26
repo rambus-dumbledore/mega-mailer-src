@@ -469,6 +469,21 @@ impl RedisStorage<MainStorage> {
         let key = format!("IMPORTANT_EMAILS:{}", username);
         self.srem(&key, email)
     }
+
+    pub fn get_important_tags(&self, username: &String) -> Option<Vec<String>> {
+        let key = format!("IMPORTANT_TAGS:{}", username);
+        self.smembers(&key).ok()
+    }
+
+    pub fn add_important_tag(&self, username: &String, tag: &String) -> Result<bool> {
+        let key = format!("IMPORTANT_TAGS:{}", username);
+        self.sadd(&key, tag)
+    }
+
+    pub fn remove_important_tag(&self, username: &String, tag: &String) -> Result<bool> {
+        let key = format!("IMPORTANT_TAGS:{}", username);
+        self.srem(&key, tag)
+    }
 }
 
 pub type Storage = RedisStorage<MainStorage>;

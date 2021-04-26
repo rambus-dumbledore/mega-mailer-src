@@ -116,7 +116,7 @@ impl Checker {
             to: username.clone(),
             text,
             send_after,
-            important: importance_checker.check(&email),
+            important: importance_checker.check(&email, &subject),
         };
         if let Err(e) = STORAGE.add_send_message_task_to_queue(task) {
             error!("{}", e);
