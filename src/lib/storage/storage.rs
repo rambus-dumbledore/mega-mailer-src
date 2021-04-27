@@ -484,6 +484,14 @@ impl RedisStorage<MainStorage> {
         let key = format!("IMPORTANT_TAGS:{}", username);
         self.srem(&key, tag)
     }
+
+    pub fn set_heartbeat(&self, service: &String, timestamp: i64) -> Result<bool> {
+        self.hset(&String::from("HEARTBEAT"), service, timestamp)
+    }
+
+    pub fn get_heartbeat(&self) -> Result<BTreeMap<String, i64>> {
+        self.hgetall(&String::from("HEARTBEAT"))
+    }
 }
 
 pub type Storage = RedisStorage<MainStorage>;

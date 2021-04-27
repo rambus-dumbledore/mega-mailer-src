@@ -7,6 +7,7 @@ use crate::account_handlers::account_routes;
 use crate::auth_handlers::auth_routes;
 use crate::notify_settings_handlers::notify_settings_routes;
 use crate::importance_settings_handlers::importance_settings_routes;
+use crate::heartbeat_handlers::heartbeat_handlers;
 
 #[get("/")]
 fn index() -> Redirect {
@@ -21,6 +22,7 @@ pub async fn init_server_instance() -> Rocket<Build> {
         .mount("/api", account_routes())
         .mount("/api", notify_settings_routes())
         .mount("/api", importance_settings_routes())
+        .mount("/api", heartbeat_handlers())
         .mount("/", auth_routes())
         .mount(
             "/assets",

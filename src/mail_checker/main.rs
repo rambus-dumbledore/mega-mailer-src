@@ -5,9 +5,16 @@ use log::error;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use pretty_env_logger;
+use lazy_static::lazy_static;
 
 use checker::Checker;
 use common::types::*;
+use common::storage::{Storage};
+use common::heartbeat::HeartbeatService;
+
+lazy_static! {
+    static ref STORAGE: Arc<Storage> = Storage::new().unwrap().into();
+}
 
 fn main_impl() -> Result<()> {
     let running = Arc::new(AtomicBool::new(true));
@@ -19,6 +26,9 @@ fn main_impl() -> Result<()> {
     .map_err(|e| {
         Error::InternalError(InternalError::RuntimeError(format!("Error setting signal handler: {}", e)))
     })?;
+
+    let heartbeat_service = HeartbeatService::new("MAIL_CHECKER".into(), (*STORAGE).clone());
+    heartbeat_service.run();
 
     let mut agenda = schedule::Agenda::new();
 
