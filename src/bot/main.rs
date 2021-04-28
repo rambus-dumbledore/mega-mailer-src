@@ -9,6 +9,7 @@ use std::sync::Arc;
 use common::storage::Storage;
 use common::types::*;
 use common::heartbeat::HeartbeatService;
+use std::pin::Pin;
 
 async fn main_impl() -> Result<()> {
     let running = Arc::new(AtomicBool::new(true));
@@ -21,7 +22,7 @@ async fn main_impl() -> Result<()> {
         Error::InternalError(InternalError::RuntimeError(format!("Error setting signal handler: {}", e)))
     })?;
 
-    let storage: Arc<Storage> = Storage::new()?.into();
+    let storage: Pin<Arc<Storage>> = Arc::pin(Storage::new()?);
     let bot = bot::TelegramBot::new(storage.clone(), running);
 
     let heartbeat_service = HeartbeatService::new("TELEGRAM_BOT".into(), storage.clone());

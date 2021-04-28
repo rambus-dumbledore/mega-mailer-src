@@ -1,14 +1,15 @@
 use std::sync::Arc;
 use crate::storage::Storage;
 use log::error;
+use std::pin::Pin;
 
 pub struct HeartbeatService {
     key: String,
-    storage: Arc<Storage>,
+    storage: Pin<Arc<Storage>>,
 }
 
 impl HeartbeatService {
-    pub fn new(key: String, storage: Arc<Storage>) -> Self {
+    pub fn new(key: String, storage: Pin<Arc<Storage>>) -> Self {
         HeartbeatService{
             key, storage
         }

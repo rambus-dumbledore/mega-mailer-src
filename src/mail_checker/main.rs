@@ -1,20 +1,19 @@
+#![feature(trait_alias)]
+
 mod checker;
 
 use ctrlc;
 use log::error;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use pretty_env_logger;
-use lazy_static::lazy_static;
 
 use checker::Checker;
 use common::types::*;
 use common::storage::{Storage};
 use common::heartbeat::HeartbeatService;
 
-lazy_static! {
-    static ref STORAGE: Arc<Storage> = Storage::new().unwrap().into();
-}
 
 fn main_impl() -> Result<()> {
     let running = Arc::new(AtomicBool::new(true));
@@ -27,14 +26,17 @@ fn main_impl() -> Result<()> {
         Error::InternalError(InternalError::RuntimeError(format!("Error setting signal handler: {}", e)))
     })?;
 
-    let heartbeat_service = HeartbeatService::new("MAIL_CHECKER".into(), (*STORAGE).clone());
+    let storage: Pin<Arc<Storage>> = Arc::pin(Storage::new()?);
+
+    let heartbeat_service = HeartbeatService::new("MAIL_CHECKER".into(), storage);
     heartbeat_service.run();
 
     let mut agenda = schedule::Agenda::new();
 
+    let checker = Arc::pin(Checker::new());
     agenda
         .add(move || {
-            Checker::check_on_cron();
+            checker.check_on_cron();
         })
         .schedule("0 * * * * *")?;
 

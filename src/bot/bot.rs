@@ -11,11 +11,12 @@ use common::storage::Storage;
 use common::types::{Error,};
 
 use super::handlers;
+use std::pin::Pin;
 
 #[derive(Clone)]
 pub struct TelegramBot {
     bot: Bot,
-    storage: Arc<Storage>,
+    storage: Pin<Arc<Storage>>,
     running: Arc<AtomicBool>,
 }
 
@@ -63,7 +64,7 @@ fn parse_update(update: &TelegramMessage) -> Option<Message> {
 }
 
 impl TelegramBot {
-    pub fn new(storage: Arc<Storage>, running: Arc<AtomicBool>) -> TelegramBot {
+    pub fn new(storage: Pin<Arc<Storage>>, running: Arc<AtomicBool>) -> TelegramBot {
         let token = CONFIG.get::<String>("bot.secret");
         let bot = Bot::new(token);
 
@@ -129,7 +130,7 @@ impl TelegramBot {
     async fn answer(
         cx: UpdateWithCx<Bot, TelegramMessage>,
         message: Message,
-        storage: &Arc<Storage>,
+        storage: &Pin<Arc<Storage>>,
     ) -> Result<(), Error> {
         let storage = storage.clone();
         match message {
@@ -146,7 +147,7 @@ impl TelegramBot {
         Ok(())
     }
 
-    pub async fn send_markdown(bot: &Bot, storage: &Arc<Storage>, username: &String, text: &String) -> Result<(), Error> {
+    pub async fn send_markdown(bot: &Bot, storage: &Pin<Arc<Storage>>, username: &String, text: &String) -> Result<(), Error> {
         let chat_id = storage.get_telegram_id(username)?;
         let reply_markup = KeyboardMarkup::new(vec![vec![
             KeyboardButton{
