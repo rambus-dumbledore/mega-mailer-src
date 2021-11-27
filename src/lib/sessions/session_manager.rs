@@ -12,6 +12,8 @@ use crate::cfg::CONFIG;
 use crate::storage::{Storage, User};
 use crate::types::*;
 
+type HmacSha256 = Hmac<Sha256>; 
+
 const COOKIE_NAME: &str = "mega_mailer_secret";
 
 pub struct SessionKeystore {
@@ -21,7 +23,7 @@ pub struct SessionKeystore {
 impl SessionKeystore {
     pub fn new() -> SessionKeystore {
         SessionKeystore {
-            key: Hmac::new_varkey(CONFIG.get::<String>("web.cookie_key").as_bytes()).unwrap(),
+            key: HmacSha256::new_from_slice(CONFIG.get::<String>("web.cookie_key").as_bytes()).unwrap(),
         }
     }
 }

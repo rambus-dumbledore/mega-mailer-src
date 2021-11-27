@@ -11,7 +11,6 @@ use common::cfg::CONFIG;
 use common::storage::{MailAccount, Storage};
 use common::types::{Error, MailCheckerError, Result, TelegramMessageTask, ImportanceChecker};
 use std::sync::Arc;
-use std::pin::Pin;
 
 pub struct Checker {
     host: String,

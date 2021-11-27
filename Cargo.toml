@@ -2,13 +2,13 @@
 name = "mega_mailer"
 version = "0.1.0"
 authors = ["Ilya Volchenkov <ivolchenkov@megaputer.ru>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 rocket = { git = "https://github.com/SergioBenitez/Rocket" }
 rocket_contrib = { git = "https://github.com/SergioBenitez/Rocket" }
-jwt = "0.13"
-hmac = "0.10"
+jwt = "0.15.0"
+hmac = "0.11.0"
 sha2 = "0.9"
 serde = "1.0"
 serde_json = "1.0"
@@ -16,24 +16,25 @@ serde_cbor = "0.11"
 tokio = { version = "1.2", features = ["rt"]}
 teloxide = { git = "https://github.com/teloxide/teloxide", default-features = false, features = ["rustls", "macros"] }
 futures = "0.3"
-redis = "0.20"
+redis = "0.21.4"
 log = "0.4"
 pretty_env_logger = "0.4"
-config = { version = "0.10", default-features = false, features = ["yaml"] }
-rand = "0.8"
+config = { version = "0.11.0", default-features = false, features = ["yaml"] }
+rand = "0.8.4"
 regex = "1.4"
 lazy_static = "1.4"
-block-modes = "0.7"
-aes = "0.6"
+block-modes = "0.8.1"
+aes = "0.7.5"
 thiserror = "1.0"
 imap = { version = "=2.4.1", default-features = false }
-rustls-connector = { version = "=0.13.1" }
-schedule = { git = "https://gogs.ddosya.ml/ramb/shedule-rs.git" }
+rustls-connector = { version = "=0.15.0" }
+clokwerk = "0.3.5"
 rustyknife = "0.2"
 reqwest = { version = "0.11", default-features = false, features = ["rustls-tls"] }
 uuid = "0.8"
 ctrlc = "3.1"
 chrono = { version = "0.4", features = ["serde"] }
+sentry = { git = "https://github.com/getsentry/sentry-rust", default-features = false, features = ["anyhow", "reqwest", "rustls", "backtrace", "contexts", "panic", "log", "tracing"] }
 
 [patch.crates-io]
 teloxide-core = { git = "https://github.com/teloxide/teloxide-core" }

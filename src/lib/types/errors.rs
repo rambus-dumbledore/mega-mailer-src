@@ -69,8 +69,6 @@ pub enum Error {
     IoError(std::io::Error),
     #[error("Network error: {0}")]
     NetworkError(NetworkError),
-    #[error("Schedule error: {0}")]
-    ScheduleError(schedule::error::Error),
     #[error("MailChecker error: {0}")]
     MailCheckerError(MailCheckerError),
     #[error("Internal error: {0}")]
@@ -122,12 +120,6 @@ impl std::convert::From<std::io::Error> for Error {
 impl std::convert::From<rustls_connector::HandshakeError<std::net::TcpStream>> for Error {
     fn from(hs_error: rustls_connector::HandshakeError<std::net::TcpStream>) -> Self {
         Error::NetworkError(NetworkError::HandshakeError(hs_error))
-    }
-}
-
-impl std::convert::From<schedule::error::Error> for Error {
-    fn from(schedule_error: schedule::error::Error) -> Self {
-        Error::ScheduleError(schedule_error)
     }
 }
 

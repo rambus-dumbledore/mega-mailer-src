@@ -20,6 +20,8 @@ use server::init_server_instance;
 fn main() {
     pretty_env_logger::init();
 
+    let _guard = common::sentry::init_sentry();
+
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async move {
         let session_keystore = SessionKeystore::new();
