@@ -1,4 +1,4 @@
-FROM rustlang/rust:nightly-alpine3.12 as build
+FROM rust:alpine3.14 as build
 
 COPY src /build/src
 COPY Cargo.toml /build/
