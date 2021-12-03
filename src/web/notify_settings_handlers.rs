@@ -1,24 +1,19 @@
-use rocket::{get, post, routes, Route, State};
-use rocket_contrib::json::Json;
+use axum::{Json, Router, extract::Extension, response::IntoResponse, routing::{get}};
 
-use common::storage::{Storage, User};
-use common::types::Result;
+use common::{storage::{Storage, User}, types::Result};
 use std::sync::Arc;
 
-#[get("/working_hours")]
-fn get_working_hours(user: User, storage: State<Arc<Storage>>) -> Json<Option<Vec<u8>>> {
-    storage.get_user_working_hours(&user.username).into()
+async fn get_working_hours(user: User, Extension(storage): Extension<Arc<Storage>>) -> impl IntoResponse {
+    let res = storage.get_user_working_hours(&user.username);
+    Json(res)
 }
 
-#[post("/working_hours", data = "<params>")]
-fn set_working_hours(user: User, storage: State<Arc<Storage>>, params: Json<Vec<u8>>) -> Result<()> {
+async fn set_working_hours(user: User, Extension(storage): Extension<Arc<Storage>>, Json(params): Json<Vec<u8>>) -> Result<impl IntoResponse> {
     storage.set_user_working_hours(&user.username, &params)?;
     Ok(())
 }
 
-pub fn notify_settings_routes() -> Vec<Route> {
-    routes![
-        get_working_hours,
-        set_working_hours,
-    ]
+pub fn notify_settings_routes() -> Router {
+    Router::new()
+        .route("/working_hours", get(get_working_hours).post(set_working_hours))
 }

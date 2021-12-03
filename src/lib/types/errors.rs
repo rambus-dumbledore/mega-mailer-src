@@ -1,10 +1,8 @@
 use redis::{Connection, RedisError};
-use rocket;
-use rocket::response::Responder;
+
 use rustls_connector;
 use serde_cbor;
 use serde_json::json;
-use std::io::Cursor;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -75,15 +73,17 @@ pub enum Error {
     InternalError(InternalError),
 }
 
-impl<'r> Responder<'r, 'static> for Error {
-    fn respond_to(self, _: &'r rocket::Request<'_>) -> rocket::response::Result<'static> {
-        let response = json!({ "error": format!("{}", self) }).to_string();
+impl axum::response::IntoResponse for Error {
+    type Body = axum::body::Body;
+    type BodyError = <Self::Body as axum::body::HttpBody>::Error;
 
-        rocket::response::Response::build()
-            .sized_body(response.len(), Cursor::new(response))
-            .header(rocket::http::ContentType::JSON)
-            .status(rocket::http::Status::InternalServerError)
-            .ok()
+    fn into_response(self) -> axum::http::Response<Self::Body> {
+        let response = json!({ "error": format!("{}", self) }).to_string();
+        axum::http::Response::builder()
+            .header(axum::http::header::CONTENT_TYPE, "application/json")
+            .status(axum::http::StatusCode::from_u16(500).unwrap())
+            .body(Self::Body::from(response))
+            .unwrap()
     }
 }
 

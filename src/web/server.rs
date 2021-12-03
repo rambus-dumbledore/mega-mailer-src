@@ -1,7 +1,12 @@
 use common::cfg::CONFIG;
-use rocket;
-use rocket::{get, response::Redirect, routes, Build, Rocket};
-use rocket_contrib::serve::StaticFiles;
+use axum::{
+    routing::{get, service_method_routing::get as get_service},
+    Router,
+    response::Redirect,
+    http::StatusCode,
+    error_handling::HandleErrorExt
+};
+use tower_http::services::ServeDir;
 
 use crate::account_handlers::account_routes;
 use crate::auth_handlers::auth_routes;
@@ -9,28 +14,40 @@ use crate::notify_settings_handlers::notify_settings_routes;
 use crate::importance_settings_handlers::importance_settings_routes;
 use crate::heartbeat_handlers::heartbeat_handlers;
 
-#[get("/")]
-fn index() -> Redirect {
-    Redirect::found("/static/index.html")
+async fn index() -> Redirect {
+    Redirect::found("/static/index.html".parse().unwrap())
 }
 
-pub async fn init_server_instance() -> Rocket<Build> {
-    let figment = rocket::Config::figment()
-        .merge(("address", CONFIG.get::<String>("web.address")))
-        .merge(("port", CONFIG.get::<u32>("web.port")));
-    rocket::custom(figment)
-        .mount("/api", account_routes())
-        .mount("/api", notify_settings_routes())
-        .mount("/api", importance_settings_routes())
-        .mount("/api", heartbeat_handlers())
-        .mount("/", auth_routes())
-        .mount(
+pub async fn init_server_instance() -> (axum::Router, String, u16) {
+    let assets_service = ServeDir::new(CONFIG.get::<String>("file_storage.path"))
+        .handle_error(|error: std::io::Error| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Unhandled internal error: {}", error),
+        )
+    });
+    let static_service = ServeDir::new(CONFIG.get::<String>("web.static_path"))
+        .handle_error(|error: std::io::Error| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Unhandled internal error: {}", error),
+        )
+    });
+    let router = Router::new()
+        .merge(auth_routes())
+        .nest("/api", heartbeat_handlers())
+        .nest("/api", account_routes())
+        .nest("/api", notify_settings_routes())
+        .nest("/api", importance_settings_routes())
+        .nest(
             "/assets",
-            StaticFiles::from(CONFIG.get::<String>("file_storage.path")),
+            get_service(assets_service),
         )
-        .mount(
+        .nest(
             "/static",
-            StaticFiles::from(CONFIG.get::<String>("web.static_path")),
+            get_service(static_service),
         )
-        .mount("/", routes![index])
+        .route("/", get(index));
+
+    (router, CONFIG.get::<String>("web.address"), CONFIG.get::<u16>("web.port"))
 }

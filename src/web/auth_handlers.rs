@@ -1,5 +1,4 @@
-use rocket::{get, post, routes, Route, State};
-use rocket_contrib::json::Json;
+use axum::{routing::{get, post}, extract::Extension, Router, Json, response::IntoResponse};
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
@@ -14,8 +13,7 @@ struct LoginParams {
     pub code: String,
 }
 
-#[post("/login", data = "<params>")]
-fn login(mut sm: SessionManager<'_>, params: Json<LoginParams>) -> Result<()> {
+async fn login(mut sm: SessionManager, Json(params): Json<LoginParams>) -> Result<impl IntoResponse> {
     sm.authenticate(&params.username, &params.code)
 }
 
@@ -24,8 +22,7 @@ struct CodeParams {
     pub username: String,
 }
 
-#[post("/login_code", data = "<params>")]
-async fn login_code(storage: State<'_, Arc<Storage>>, params: Json<CodeParams>) -> Result<()> {
+async fn login_code(Extension(storage): Extension<Arc<Storage>>, Json(params): Json<CodeParams>) -> Result<impl IntoResponse> {
     if params.username.len() == 0 {
         return Err(Error::AuthorizationError(AuthError::UsernameEmpty));
     }
@@ -50,8 +47,7 @@ struct AttachCodeParams {
     pub username: String,
 }
 
-#[post("/attach_code", data = "<params>")]
-fn attach_code(storage: State<'_, Arc<Storage>>, params: Json<AttachCodeParams>) -> Result<String> {
+async fn attach_code(Extension(storage): Extension<Arc<Storage>>, Json(params): Json<AttachCodeParams>) -> Result<impl IntoResponse> {
     if params.username.len() == 0 {
         return Err(Error::AuthorizationError(AuthError::UsernameEmpty));
     }
@@ -66,16 +62,19 @@ fn attach_code(storage: State<'_, Arc<Storage>>, params: Json<AttachCodeParams>)
     Ok(json!({ "code": code }).to_string())
 }
 
-#[get("/whoami")]
-fn whoami(user: User) -> Json<User> {
+async fn whoami(user: User) -> impl IntoResponse {
     Json(user)
 }
 
-#[get("/logout")]
-fn logout(mut sm: SessionManager) {
+async fn logout(mut sm: SessionManager) -> impl IntoResponse {
     sm.logout();
 }
 
-pub fn auth_routes() -> Vec<Route> {
-    routes![login, attach_code, login_code, logout, whoami]
+pub fn auth_routes() -> Router {
+    Router::new()
+        .route("/login", post(login))
+        .route("/login_code", post(login_code))
+        .route("/attach_code", post(attach_code))
+        .route("/whoami", get(whoami))
+        .route("/logout", get(logout))
 }

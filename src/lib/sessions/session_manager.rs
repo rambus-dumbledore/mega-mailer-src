@@ -1,12 +1,12 @@
+use axum::extract::{FromRequest, RequestParts};
 use hmac::{Hmac, NewMac};
 use jwt::{SignWithKey, VerifyWithKey};
 use sha2::Sha256;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use rocket::http::{Cookie, CookieJar, SameSite};
-use rocket::request::{FromRequest, Outcome};
-use rocket::{Request, State};
+use cookie::SameSite;
+use tower_cookies::{Cookie, Cookies};
 
 use crate::cfg::CONFIG;
 use crate::storage::{Storage, User};
@@ -16,6 +16,7 @@ type HmacSha256 = Hmac<Sha256>;
 
 const COOKIE_NAME: &str = "mega_mailer_secret";
 
+#[derive(Clone)]
 pub struct SessionKeystore {
     pub key: Hmac<Sha256>,
 }
@@ -28,18 +29,18 @@ impl SessionKeystore {
     }
 }
 
-pub struct SessionManager<'a> {
-    cookies: &'a CookieJar<'a>,
-    keystore: State<'a, SessionKeystore>,
-    storage: State<'a, Arc<Storage>>,
+pub struct SessionManager {
+    cookies: Cookies,
+    keystore: SessionKeystore,
+    storage: Arc<Storage>,
 }
 
-impl SessionManager<'_> {
-    pub fn new<'a>(
-        cookies: &'a CookieJar<'a>,
-        keystore: State<'a, SessionKeystore>,
-        storage: State<'a, Arc<Storage>>,
-    ) -> SessionManager<'a> {
+impl SessionManager {
+    pub fn new(
+        cookies: Cookies,
+        keystore: SessionKeystore,
+        storage: Arc<Storage>,
+    ) -> SessionManager {
         SessionManager {
             cookies,
             keystore,
@@ -129,15 +130,15 @@ impl SessionManager<'_> {
     }
 }
 
-#[rocket::async_trait]
-impl<'r> FromRequest<'r> for SessionManager<'r> {
-    type Error = ();
+#[axum::async_trait]
+impl<B> FromRequest<B> for SessionManager where B: Send {
+    type Rejection = axum::http::StatusCode;
 
-    async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        let keystore = request.guard::<State<SessionKeystore>>().await.unwrap();
-        let cookies = request.cookies();
-        let storage = request.guard::<State<Arc<Storage>>>().await.unwrap();
-        Outcome::Success(SessionManager {
+    async fn from_request(req: &mut RequestParts<B>) -> std::result::Result<Self, Self::Rejection> {
+        let keystore =  req.extensions().unwrap().get::<SessionKeystore>().cloned().unwrap();
+        let cookies = req.extensions().unwrap().get::<Cookies>().cloned().unwrap();
+        let storage = req.extensions().unwrap().get::<Arc<Storage>>().cloned().unwrap();
+        Ok(SessionManager {
             keystore,
             cookies,
             storage,
