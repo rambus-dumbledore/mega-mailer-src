@@ -1,10 +1,9 @@
 use common::cfg::CONFIG;
 use axum::{
-    routing::{get, service_method_routing::get as get_service},
+    routing::{get, get_service},
     Router,
     response::Redirect,
-    http::StatusCode,
-    error_handling::HandleErrorExt
+    http::StatusCode
 };
 use tower_http::services::ServeDir;
 
@@ -19,15 +18,15 @@ async fn index() -> Redirect {
 }
 
 pub async fn init_server_instance() -> (axum::Router, String, u16) {
-    let assets_service = ServeDir::new(CONFIG.get::<String>("file_storage.path"))
-        .handle_error(|error: std::io::Error| {
+    let assets_service = get_service(ServeDir::new(CONFIG.get::<String>("file_storage.path")))
+        .handle_error(|error: std::io::Error| async move {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Unhandled internal error: {}", error),
         )
     });
-    let static_service = ServeDir::new(CONFIG.get::<String>("web.static_path"))
-        .handle_error(|error: std::io::Error| {
+    let static_service = get_service(ServeDir::new(CONFIG.get::<String>("web.static_path")))
+        .handle_error(|error: std::io::Error| async move {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Unhandled internal error: {}", error),
@@ -39,14 +38,8 @@ pub async fn init_server_instance() -> (axum::Router, String, u16) {
         .nest("/api", account_routes())
         .nest("/api", notify_settings_routes())
         .nest("/api", importance_settings_routes())
-        .nest(
-            "/assets",
-            get_service(assets_service),
-        )
-        .nest(
-            "/static",
-            get_service(static_service),
-        )
+        .nest("/assets", assets_service)
+        .nest("/static", static_service)
         .route("/", get(index));
 
     (router, CONFIG.get::<String>("web.address"), CONFIG.get::<u16>("web.port"))

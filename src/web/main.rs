@@ -1,6 +1,3 @@
-#![feature(type_alias_impl_trait)]
-#![feature(backtrace)]
-
 mod account_handlers;
 mod auth_handlers;
 mod server;

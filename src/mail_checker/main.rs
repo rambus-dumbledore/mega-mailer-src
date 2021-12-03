@@ -1,5 +1,3 @@
-#![feature(trait_alias)]
-
 mod checker;
 
 use log::error;
