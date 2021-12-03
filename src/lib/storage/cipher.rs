@@ -17,7 +17,7 @@ lazy_static! {
 
 impl Cipher {
     fn get_cipher(&self) -> Aes128CBC {
-        Aes128CBC::new_var(self.key.as_bytes(), self.iv.as_bytes()).unwrap()
+        Aes128CBC::new_from_slices(self.key.as_bytes(), self.iv.as_bytes()).unwrap()
     }
 
     pub fn new() -> Cipher {

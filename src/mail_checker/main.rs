@@ -1,45 +1,40 @@
+#![feature(trait_alias)]
+
 mod checker;
 
-use ctrlc;
 use log::error;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use pretty_env_logger;
-use lazy_static::lazy_static;
+use clokwerk::{TimeUnits};
 
 use checker::Checker;
 use common::types::*;
 use common::storage::{Storage};
 use common::heartbeat::HeartbeatService;
-
-lazy_static! {
-    static ref STORAGE: Arc<Storage> = Storage::new().unwrap().into();
-}
+use common::ctrlc_handler::set_ctrlc_handler;
 
 fn main_impl() -> Result<()> {
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
 
-    ctrlc::set_handler(move || {
-        r.store(false, Ordering::SeqCst);
-    })
-    .map_err(|e| {
-        Error::InternalError(InternalError::RuntimeError(format!("Error setting signal handler: {}", e)))
-    })?;
+    set_ctrlc_handler(r)?;
 
-    let heartbeat_service = HeartbeatService::new("MAIL_CHECKER".into(), (*STORAGE).clone());
+    let storage: Pin<Arc<Storage>> = Arc::pin(Storage::new()?);
+
+    let heartbeat_service = HeartbeatService::new("MAIL_CHECKER".into(), storage);
     heartbeat_service.run();
 
-    let mut agenda = schedule::Agenda::new();
+    let checker = Arc::pin(Checker::new());
 
-    agenda
-        .add(move || {
-            Checker::check_on_cron();
-        })
-        .schedule("0 * * * * *")?;
+    let mut scheduler = clokwerk::Scheduler::with_tz(chrono::FixedOffset::east(3 * 3600));
+    scheduler.every(1.minute()).run(move || {
+        checker.check_on_cron();
+    });
 
     while running.load(Ordering::Relaxed) {
-        agenda.run_pending();
+        scheduler.run_pending();
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
 
@@ -49,10 +44,9 @@ fn main_impl() -> Result<()> {
 fn main() {
     pretty_env_logger::init();
 
-    match main_impl() {
-        Ok(_) => {}
-        Err(e) => {
-            error!("MailChecker finished with error: {}", e)
-        }
-    }
+    let _guard = common::sentry::init_sentry();
+
+    if let Err(e) = main_impl() {
+        error!("MailChecker finished with error: {}", e)
+    };
 }

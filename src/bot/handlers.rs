@@ -8,10 +8,11 @@ use common::cfg::CONFIG;
 use common::storage::Storage;
 use common::types::Error;
 use crate::bot::TelegramBot;
+use std::pin::Pin;
 
 pub async fn process_set_avatar_command(
     cx: UpdateWithCx<Bot, TelegramMessage>,
-    storage: Arc<Storage>,
+    storage: Pin<Arc<Storage>>,
 ) -> Result<(), Error> {
     let username = storage.get_username(&cx.chat_id().to_string());
     if let Err(_) = username {
@@ -49,7 +50,7 @@ pub async fn process_set_avatar_command(
 
 pub async fn process_attach_command(
     cx: UpdateWithCx<Bot, TelegramMessage>,
-    storage: Arc<Storage>,
+    storage: Pin<Arc<Storage>>,
     code: &String,
 ) -> Result<(), Error> {
     let request = storage.get_attach_request(code);
@@ -67,7 +68,7 @@ pub async fn process_attach_command(
 
 pub async fn process_fetch_all_emails(
     cx: UpdateWithCx<Bot, TelegramMessage>,
-    storage: Arc<Storage>,
+    storage: Pin<Arc<Storage>>,
 ) -> Result<(), Error> {
     let chat_id = cx.chat_id().to_string();
     let username = storage.get_username(&chat_id)?;

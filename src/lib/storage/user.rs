@@ -1,7 +1,6 @@
-use rocket::http::Status;
-use rocket::request::{FromRequest, Outcome};
-use rocket::{Request, State};
+use axum::{http::StatusCode, extract::{FromRequest, RequestParts}};
 use serde::{Deserialize, Serialize};
+use tower_cookies::Cookies;
 use std::sync::Arc;
 
 use crate::sessions::{SessionKeystore, SessionManager};
@@ -13,19 +12,19 @@ pub struct User {
     pub photo: Option<String>,
 }
 
-#[rocket::async_trait]
-impl<'r> FromRequest<'r> for User {
-    type Error = ();
+#[axum::async_trait]
+impl<B> FromRequest<B> for User where B: Send {
+    type Rejection = (axum::http::StatusCode, &'static str);
 
-    async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        let keystore = request.guard::<State<SessionKeystore>>().await.unwrap();
-        let cookies = request.cookies();
-        let storage = request.guard::<State<Arc<Storage>>>().await.unwrap();
+    async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
+        let keystore =  req.extensions().unwrap().get::<SessionKeystore>().cloned().unwrap();
+        let cookies = req.extensions().unwrap().get::<Cookies>().cloned().unwrap();
+        let storage = req.extensions().unwrap().get::<Arc<Storage>>().cloned().unwrap();
         let mut sm = SessionManager::new(cookies, keystore, storage);
         if sm.is_authorized() {
-            Outcome::Success(sm.get_user().unwrap())
+           Ok(sm.get_user().unwrap())
         } else {
-            Outcome::Failure((Status::Unauthorized, ()))
+           Err((StatusCode::UNAUTHORIZED, "Unauthorized"))
         }
     }
 }

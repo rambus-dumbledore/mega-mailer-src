@@ -1,13 +1,10 @@
-use rocket::{get, post, routes, Route, State};
+use axum::{Router, extract::Extension, routing::{get}, Json, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use common::storage::{MailAccount, Storage, User};
-use common::types::Result;
-use rocket_contrib::json::Json;
+use common::{storage::{MailAccount, Storage, User}, types::Result};
 
-#[get("/account")]
-fn get_account_settings(user: User, storage: State<Arc<Storage>>) -> Json<Option<MailAccount>> {
+async fn get_account_settings(user: User, Extension(storage): Extension<Arc<Storage>>) -> Json<Option<MailAccount>> {
     let account = storage.get_mail_account(&user.username);
     Json(account)
 }
@@ -23,18 +20,16 @@ struct SetAccountResponse {
     changed: bool,
 }
 
-#[post("/account", data = "<params>")]
-fn set_account_settings(
+async fn set_account_settings(
     user: User,
     params: Json<SetAccountParams>,
-    storage: State<Arc<Storage>>,
-) -> Result<Json<SetAccountResponse>> {
+    Extension(storage): Extension<Arc<Storage>>,
+) -> Result<impl IntoResponse> {
     let changed = storage.set_mail_account(&user.username, &params.email, &params.password)?;
     Ok(Json(SetAccountResponse { changed }))
 }
 
-#[get("/checking")]
-fn get_checking_state(user: User, storage: State<Arc<Storage>>) -> Result<Json<bool>> {
+async fn get_checking_state(user: User, Extension(storage): Extension<Arc<Storage>>) -> Result<impl IntoResponse> {
     let res = storage.is_checking_enabled(&user.username)?;
     Ok(Json(res))
 }
@@ -44,12 +39,11 @@ struct SetCheckingParams {
     state: bool,
 }
 
-#[post("/checking", data = "<params>")]
-fn set_checking(
+async fn set_checking(
     user: User,
-    storage: State<Arc<Storage>>,
+    Extension(storage): Extension<Arc<Storage>>,
     params: Json<SetCheckingParams>,
-) -> Result<()> {
+) -> Result<impl IntoResponse> {
     if params.state {
         let _ = storage.enable_checking(&user.username)?;
     } else {
@@ -58,11 +52,8 @@ fn set_checking(
     Ok(())
 }
 
-pub fn account_routes() -> Vec<Route> {
-    routes![
-        get_account_settings,
-        set_account_settings,
-        get_checking_state,
-        set_checking
-    ]
+pub fn account_routes() -> Router {
+    Router::new()
+        .route("/account", get(get_account_settings).post(set_account_settings))
+        .route("/checking", get(get_checking_state).post(set_checking))
 }

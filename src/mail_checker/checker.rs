@@ -1,5 +1,4 @@
 use imap;
-use lazy_static::lazy_static;
 use log::{debug, error};
 use rustls_connector::{RustlsConnector, TlsStream};
 use rustyknife::rfc2047::encoded_word;
@@ -11,21 +10,20 @@ use chrono::{Timelike, DateTime, Utc, TimeZone, Duration};
 use common::cfg::CONFIG;
 use common::storage::{MailAccount, Storage};
 use common::types::{Error, MailCheckerError, Result, TelegramMessageTask, ImportanceChecker};
-
-lazy_static! {
-    static ref STORAGE: Storage = Storage::new().unwrap();
-}
+use std::sync::Arc;
 
 pub struct Checker {
     host: String,
     port: u16,
+    storage: Arc<Storage>,
 }
 
 impl Checker {
-    fn new() -> Checker {
+    pub fn new() -> Checker {
         let host = CONFIG.get::<String>("mail.address");
         let port = CONFIG.get::<u16>("mail.port");
-        Checker { host, port }
+        let storage = Storage::new().expect("Could not connect to storage").into();
+        Checker { host, port, storage }
     }
 
     fn build_stream(&self) -> Result<TlsStream<TcpStream>> {
@@ -51,7 +49,7 @@ impl Checker {
         None
     }
 
-    fn process_message(message: &imap::types::Fetch, username: &String, importance_checker: &ImportanceChecker) {
+    fn process_message(&self, message: &imap::types::Fetch, username: &String, importance_checker: &ImportanceChecker) {
         let envelope = message.envelope();
         if let None = envelope {
             let error = Error::MailCheckerError(MailCheckerError::EmptyEnvelope);
@@ -93,7 +91,7 @@ impl Checker {
             format!("*{}*\n{}", escape(email.as_str()), escape(subject.as_str()))
         };
 
-        let work_hours =  STORAGE.get_user_working_hours(&username);
+        let work_hours =  self.storage.get_user_working_hours(&username);
         let send_after = if let Some(work_hours) = work_hours {
             let moscow_offset = chrono::FixedOffset::east(3 * 3600);
             let now = chrono::Utc::now().with_timezone(&moscow_offset);
@@ -118,15 +116,15 @@ impl Checker {
             send_after,
             important: importance_checker.check(&email, &subject),
         };
-        if let Err(e) = STORAGE.add_send_message_task_to_queue(task) {
+        if let Err(e) = self.storage.add_send_message_task_to_queue(task) {
             error!("{}", e);
             return;
         }
     }
 
-    fn process_account(username: &String, account: &MailAccount) {
+    fn process_account(&self, username: &String, account: &MailAccount) {
         let MailAccount { email, password } = account;
-        let client = match Checker::new().build_client() {
+        let client = match self.build_client() {
             Ok(client) => client,
             Err(e) => {
                 error!("Could not connect to mail server: {}", e);
@@ -142,7 +140,7 @@ impl Checker {
             }
         };
 
-        let importance_checker = ImportanceChecker::new(&*STORAGE, username);
+        let importance_checker = ImportanceChecker::new(&*self.storage, username);
         debug!("ImportanceChecker for user {} was built: {:?}", username, importance_checker);
 
         let folders = session.list(None, Some("INBOX*")).unwrap();
@@ -155,7 +153,7 @@ impl Checker {
             }
 
             let available_uids = Vec::from_iter(unseen.iter());
-            let to_fetch_uids = STORAGE
+            let to_fetch_uids = self.storage
                 .filter_unprocessed(username, available_uids.as_slice())
                 .unwrap();
 
@@ -167,10 +165,10 @@ impl Checker {
 
             let fetched = session.fetch(to_fetch, "ENVELOPE").unwrap();
             for message in fetched.iter() {
-                Checker::process_message(message, username, &importance_checker);
+                self.process_message(message, username, &importance_checker);
             }
 
-            STORAGE
+            self.storage
                 .add_processed_mails(username, to_fetch_uids.as_slice())
                 .unwrap();
         }
@@ -178,20 +176,20 @@ impl Checker {
         session.logout().unwrap()
     }
 
-    pub fn check_on_cron() {
-        let users = STORAGE.get_usernames_for_checking();
+    pub fn check_on_cron(&self) {
+        let users = self.storage.get_usernames_for_checking();
 
         if let Ok(users) = &users {
             for user in users {
-                let account = STORAGE.get_mail_account(user);
+                let account = self.storage.get_mail_account(user);
                 if account.is_none() {
                     error!(target: "MailChecker", "There is no valid mail account for user {}", user);
-                    STORAGE.disable_checking(user).unwrap();
+                    self.storage.disable_checking(user).unwrap();
                     continue;
                 }
 
                 let account = account.unwrap();
-                Checker::process_account(user, &account);
+                self.process_account(user, &account);
             }
         } else {
             error!(target: "MailChecker", "{}", users.unwrap_err());
