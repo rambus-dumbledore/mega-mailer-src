@@ -1,10 +1,11 @@
-use aes::Aes128;
-use block_modes::{block_padding::Pkcs7, BlockMode, Cbc};
+use aes::cipher::{block_padding::Pkcs7, BlockEncryptMut, BlockDecryptMut};
+use aes::cipher::KeyIvInit;
 use lazy_static::lazy_static;
 
-use crate::cfg::CONFIG;
+type Aes128CbcEnc = cbc::Encryptor<aes::Aes128>;
+type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
 
-type Aes128CBC = Cbc<Aes128, Pkcs7>;
+use crate::cfg::CONFIG;
 
 pub struct Cipher {
     key: String,
@@ -16,8 +17,16 @@ lazy_static! {
 }
 
 impl Cipher {
-    fn get_cipher(&self) -> Aes128CBC {
-        Aes128CBC::new_from_slices(self.key.as_bytes(), self.iv.as_bytes()).unwrap()
+    fn get_encryptor(&self) -> Aes128CbcEnc {
+        let key = self.key.as_bytes();
+        let iv = self.iv.as_bytes();
+        Aes128CbcEnc::new(key.into(), iv.into())
+    }
+
+    fn get_decryptor(&self) -> Aes128CbcDec {
+        let key = self.key.as_bytes();
+        let iv = self.iv.as_bytes();
+        Aes128CbcDec::new(key.into(), iv.into())
     }
 
     pub fn new() -> Cipher {
@@ -27,12 +36,14 @@ impl Cipher {
     }
 
     pub fn encrypt(&self, data: &[u8]) -> Vec<u8> {
-        let cipher = self.get_cipher();
-        cipher.encrypt_vec(data)
+        let mut buf = data.to_owned();
+        let cipher = self.get_encryptor();
+        cipher.encrypt_padded_mut::<Pkcs7>(&mut buf, data.len()).unwrap().to_vec()
     }
 
     pub fn decrypt(&self, data: &[u8]) -> Vec<u8> {
-        let cipher = self.get_cipher();
-        cipher.decrypt_vec(data).unwrap()
+        let mut buf = data.to_owned();
+        let cipher = self.get_decryptor();
+        cipher.decrypt_padded_mut::<Pkcs7>(&mut buf).unwrap().to_vec()
     }
 }

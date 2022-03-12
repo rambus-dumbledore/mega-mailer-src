@@ -18,12 +18,15 @@ async fn main_impl() -> Result<()> {
     set_ctrlc_handler(r)?;
 
     let storage: Pin<Arc<Storage>> = Arc::pin(Storage::new()?);
-    let bot = bot::TelegramBot::new(storage.clone(), running);
+    let bot = Arc::new(bot::TelegramBot::new(storage.clone(), running));
 
     let heartbeat_service = HeartbeatService::new("TELEGRAM_BOT".into(), storage.clone());
     heartbeat_service.run();
 
-    bot.start_listener_thread();
+    let cloned_bot = bot.clone();
+    tokio::spawn(async move {
+        cloned_bot.start_listener_thread().await
+    });
     bot.start_message_queue_listener_thread().await;
 
     Ok(())

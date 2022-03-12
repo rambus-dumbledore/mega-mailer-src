@@ -1,5 +1,5 @@
 use axum::extract::{FromRequest, RequestParts};
-use hmac::{Hmac, NewMac};
+use hmac::{Hmac, Mac};
 use jwt::{SignWithKey, VerifyWithKey};
 use sha2::Sha256;
 use std::collections::BTreeMap;

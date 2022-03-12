@@ -37,11 +37,10 @@ impl Cfg {
 }
 
 fn build_config() -> Cfg {
-    let mut settings = Config::default();
-    settings
-        .merge(File::with_name("config"))
-        .unwrap()
-        .merge(Environment::with_prefix("APP"))
+    let settings = Config::builder()
+        .add_source(File::with_name("config"))
+        .add_source(Environment::with_prefix("APP"))
+        .build()
         .unwrap();
     Cfg(settings)
 }

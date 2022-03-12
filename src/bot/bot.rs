@@ -1,14 +1,17 @@
-use log::{error, debug};
+
+use log::error;
 use std::sync::Arc;
-use teloxide::types::ParseMode::MarkdownV2;
-use teloxide::{prelude::*};
-use tokio;
+use teloxide::{
+    prelude2::*,
+    utils::command::BotCommand,
+    types::ParseMode::MarkdownV2,
+    types::{KeyboardMarkup, KeyboardButton, Message}, dispatching2::UpdateFilterExt
+};
 use std::sync::atomic::{AtomicBool, Ordering};
-use teloxide::types::{KeyboardMarkup, KeyboardButton, Message as TelegramMessage, MessageKind, MediaKind};
 
 use common::cfg::CONFIG;
 use common::storage::Storage;
-use common::types::{Error,};
+use common::types::{Error};
 
 use super::handlers;
 use std::pin::Pin;
@@ -20,47 +23,11 @@ pub struct TelegramBot {
     running: Arc<AtomicBool>,
 }
 
-enum RawMessage {
-    FetchAllMailRequest,
-    Other(String),
-}
-
-enum Message {
-    AttachRequest(String),
-    SetAvatarRequest,
-    RawMessage(RawMessage)
-}
-
-fn parse_text(text: &String) -> Option<Message> {
-    let res = teloxide::utils::command::parse_command(text.as_str(), "");
-    return if let Some((cmd, args)) = res {
-        match cmd {
-            "attach" => Some(Message::AttachRequest(args[0].into())),
-            "set_avatar" => Some(Message::SetAvatarRequest),
-            _ => None
-        }
-    } else {
-        match text.as_str() {
-            "Fetch all emails" => {
-                Some(Message::RawMessage(RawMessage::FetchAllMailRequest))
-            },
-            _ => Some(Message::RawMessage(RawMessage::Other(text.clone())))
-        }
-    }
-}
-
-fn parse_update(update: &TelegramMessage) -> Option<Message> {
-    return match update.kind {
-        MessageKind::Common(ref msg) => {
-            match msg.media_kind {
-                MediaKind::Text(ref text) => {
-                    parse_text(&text.text)
-                },
-                _ => None
-            }
-        },
-        _ => None
-    }
+#[derive(BotCommand, Clone)]
+#[command(rename = "lowercase", description = "Simple commands")]
+enum Command {
+    Attach(String),
+    SetAvatar,
 }
 
 impl TelegramBot {
@@ -71,26 +38,50 @@ impl TelegramBot {
         TelegramBot { bot, storage, running }
     }
 
-    pub fn start_listener_thread(&self) {
-        let b = self.bot.clone();
-        let s = self.storage.clone();
-
-        let closure = move |msg: UpdateWithCx<Bot, TelegramMessage>| {
-            let storage = s.clone();
-            async move {
-                if let Some(message) = parse_update(&msg.update) {
-                    match TelegramBot::answer(msg, message, &storage).await {
-                        Err(e) => error!("Could not answer request: {}", e),
-                        _ => {}
-                    }
-                }
-                respond(())
-            }
+    async fn command_endpoint(bot: Bot, msg: Message, cmd: Command, storage: Pin<Arc<Storage>>) -> Result<(), Error> {
+        match cmd {
+            Command::Attach(code) => handlers::process_attach_command(bot, msg, storage, &code).await?,
+            Command::SetAvatar => handlers::process_set_avatar_command(bot, msg, storage).await?,
         };
 
-        tokio::spawn(async move {
-            teloxide::repl(b, closure).await;
-        });
+        Ok(())
+    }
+
+    async fn fetch_all_endpoint(bot: Bot, msg: Message, storage: Pin<Arc<Storage>>) -> Result<(), Error> {
+        handlers::process_fetch_all_emails(bot, msg, storage).await?;
+        Ok(())
+    }
+
+    pub async fn start_listener_thread(&self) {
+        let messages_handler = Update::filter_message()
+            .branch(
+                dptree::entry()
+                .filter_command::<Command>()
+                .endpoint(TelegramBot::command_endpoint)
+
+            )
+            .branch(
+                dptree::filter(|msg: Message| msg.text().eq(&Some("Fetch all emails")))
+                .endpoint(TelegramBot::fetch_all_endpoint)
+            );
+
+        let storage = self.storage.clone();
+        let bot_name = String::from("");
+        let bot = self.bot.clone();
+
+        Dispatcher::builder(bot, messages_handler)
+            .dependencies(dptree::deps![storage, bot_name])
+            .default_handler(|upd| async move {
+                log::warn!("Unhandled update: {:?}", upd);
+            })
+            // If the dispatcher fails for some reason, execute this handler.
+            .error_handler(LoggingErrorHandler::with_custom_text(
+                "An error has occurred in the dispatcher",
+            ))
+            .build()
+            .setup_ctrlc_handler()
+            .dispatch()
+            .await;
     }
 
     pub async fn start_message_queue_listener_thread(&self) {
@@ -125,26 +116,6 @@ impl TelegramBot {
 
             std::thread::sleep(std::time::Duration::from_secs(10));
         }
-    }
-
-    async fn answer(
-        cx: UpdateWithCx<Bot, TelegramMessage>,
-        message: Message,
-        storage: &Pin<Arc<Storage>>,
-    ) -> Result<(), Error> {
-        let storage = storage.clone();
-        match message {
-            Message::AttachRequest(code) => handlers::process_attach_command(cx, storage, &code).await?,
-            Message::SetAvatarRequest => handlers::process_set_avatar_command(cx, storage).await?,
-            Message::RawMessage(msg) => {
-                match msg {
-                    RawMessage::FetchAllMailRequest => handlers::process_fetch_all_emails(cx, storage).await?,
-                    RawMessage::Other(raw_message) => debug!("Could not process message '{}'", raw_message)
-                }
-            }
-        };
-
-        Ok(())
     }
 
     pub async fn send_markdown(bot: &Bot, storage: &Pin<Arc<Storage>>, username: &String, text: &String) -> Result<(), Error> {
