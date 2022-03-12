@@ -2,14 +2,14 @@ mod bot;
 mod handlers;
 
 use log::error;
-use std::sync::atomic::{AtomicBool};
-use std::sync::Arc;
 use std::pin::Pin;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 
+use common::ctrlc_handler::set_ctrlc_handler;
+use common::heartbeat::HeartbeatService;
 use common::storage::Storage;
 use common::types::*;
-use common::heartbeat::HeartbeatService;
-use common::ctrlc_handler::set_ctrlc_handler;
 
 async fn main_impl() -> Result<()> {
     let running = Arc::new(AtomicBool::new(true));
@@ -24,9 +24,7 @@ async fn main_impl() -> Result<()> {
     heartbeat_service.run();
 
     let cloned_bot = bot.clone();
-    tokio::spawn(async move {
-        cloned_bot.start_listener_thread().await
-    });
+    tokio::spawn(async move { cloned_bot.start_listener_thread().await });
     bot.start_message_queue_listener_thread().await;
 
     Ok(())
@@ -38,9 +36,9 @@ fn main() {
     tokio::runtime::Runtime::new()
         .expect("Could not initialize asynchronous runtime")
         .block_on(async move {
-        teloxide::enable_logging!();
-        if let Err(e) = main_impl().await {
-            error!("TelegramBot finished with error: {}", e);
-        }
-    });
+            teloxide::enable_logging!();
+            if let Err(e) = main_impl().await {
+                error!("TelegramBot finished with error: {}", e);
+            }
+        });
 }

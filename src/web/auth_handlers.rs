@@ -1,4 +1,9 @@
-use axum::{routing::{get, post}, extract::Extension, Router, Json, response::IntoResponse};
+use axum::{
+    extract::Extension,
+    response::IntoResponse,
+    routing::{get, post},
+    Json, Router,
+};
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
@@ -13,7 +18,10 @@ struct LoginParams {
     pub code: String,
 }
 
-async fn login(mut sm: SessionManager, Json(params): Json<LoginParams>) -> Result<impl IntoResponse> {
+async fn login(
+    mut sm: SessionManager,
+    Json(params): Json<LoginParams>,
+) -> Result<impl IntoResponse> {
     sm.authenticate(&params.username, &params.code)
 }
 
@@ -22,7 +30,10 @@ struct CodeParams {
     pub username: String,
 }
 
-async fn login_code(Extension(storage): Extension<Arc<Storage>>, Json(params): Json<CodeParams>) -> Result<impl IntoResponse> {
+async fn login_code(
+    Extension(storage): Extension<Arc<Storage>>,
+    Json(params): Json<CodeParams>,
+) -> Result<impl IntoResponse> {
     if params.username.len() == 0 {
         return Err(Error::AuthorizationError(AuthError::UsernameEmpty));
     }
@@ -32,9 +43,12 @@ async fn login_code(Extension(storage): Extension<Arc<Storage>>, Json(params): J
         let text = format!("Your login code: {}", code);
         let to = params.username.clone();
 
-        storage.add_send_message_task_to_queue(
-            TelegramMessageTask { to, text, send_after: chrono::Utc::now(), important: true }
-        )?;
+        storage.add_send_message_task_to_queue(TelegramMessageTask {
+            to,
+            text,
+            send_after: chrono::Utc::now(),
+            important: true,
+        })?;
     } else {
         return Err(Error::AuthorizationError(AuthError::UserNotRegistered));
     }
@@ -47,7 +61,10 @@ struct AttachCodeParams {
     pub username: String,
 }
 
-async fn attach_code(Extension(storage): Extension<Arc<Storage>>, Json(params): Json<AttachCodeParams>) -> Result<impl IntoResponse> {
+async fn attach_code(
+    Extension(storage): Extension<Arc<Storage>>,
+    Json(params): Json<AttachCodeParams>,
+) -> Result<impl IntoResponse> {
     if params.username.len() == 0 {
         return Err(Error::AuthorizationError(AuthError::UsernameEmpty));
     }

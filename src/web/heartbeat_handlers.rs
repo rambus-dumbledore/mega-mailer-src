@@ -1,4 +1,4 @@
-use axum::{routing::{get}, extract::Extension, Router, Json, response::IntoResponse};
+use axum::{extract::Extension, response::IntoResponse, routing::get, Json, Router};
 use std::sync::Arc;
 
 use common::storage::Storage;
@@ -9,6 +9,5 @@ async fn heartbeat(Extension(storage): Extension<Arc<Storage>>) -> Result<impl I
 }
 
 pub fn heartbeat_handlers() -> Router {
-    Router::new()
-        .route("/heartbeat", get(heartbeat))
+    Router::new().route("/heartbeat", get(heartbeat))
 }

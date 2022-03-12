@@ -1,9 +1,9 @@
 mod account_handlers;
 mod auth_handlers;
-mod server;
-mod notify_settings_handlers;
-mod importance_settings_handlers;
 mod heartbeat_handlers;
+mod importance_settings_handlers;
+mod notify_settings_handlers;
+mod server;
 
 use axum::AddExtensionLayer;
 use log::error;

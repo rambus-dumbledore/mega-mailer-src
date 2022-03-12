@@ -1,5 +1,5 @@
-use aes::cipher::{block_padding::Pkcs7, BlockEncryptMut, BlockDecryptMut};
 use aes::cipher::KeyIvInit;
+use aes::cipher::{block_padding::Pkcs7, BlockDecryptMut, BlockEncryptMut};
 use lazy_static::lazy_static;
 
 type Aes128CbcEnc = cbc::Encryptor<aes::Aes128>;
@@ -38,12 +38,18 @@ impl Cipher {
     pub fn encrypt(&self, data: &[u8]) -> Vec<u8> {
         let mut buf = data.to_owned();
         let cipher = self.get_encryptor();
-        cipher.encrypt_padded_mut::<Pkcs7>(&mut buf, data.len()).unwrap().to_vec()
+        cipher
+            .encrypt_padded_mut::<Pkcs7>(&mut buf, data.len())
+            .unwrap()
+            .to_vec()
     }
 
     pub fn decrypt(&self, data: &[u8]) -> Vec<u8> {
         let mut buf = data.to_owned();
         let cipher = self.get_decryptor();
-        cipher.decrypt_padded_mut::<Pkcs7>(&mut buf).unwrap().to_vec()
+        cipher
+            .decrypt_padded_mut::<Pkcs7>(&mut buf)
+            .unwrap()
+            .to_vec()
     }
 }

@@ -449,7 +449,7 @@ impl RedisStorage<MainStorage> {
         let key = format!("WORKING_HOURS:{}", username);
         self.get_bin(&key)
     }
-    
+
     pub fn set_user_working_hours(&self, username: &String, wh: &Vec<u8>) -> Result<bool> {
         let key = format!("WORKING_HOURS:{}", username);
         self.set_bin(&key, wh)
@@ -464,7 +464,7 @@ impl RedisStorage<MainStorage> {
         let key = format!("IMPORTANT_EMAILS:{}", username);
         self.sadd(&key, email)
     }
-    
+
     pub fn remove_important_email(&self, username: &String, email: &String) -> Result<bool> {
         let key = format!("IMPORTANT_EMAILS:{}", username);
         self.srem(&key, email)

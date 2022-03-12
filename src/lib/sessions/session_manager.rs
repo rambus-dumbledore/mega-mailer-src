@@ -12,7 +12,7 @@ use crate::cfg::CONFIG;
 use crate::storage::{Storage, User};
 use crate::types::*;
 
-type HmacSha256 = Hmac<Sha256>; 
+type HmacSha256 = Hmac<Sha256>;
 
 const COOKIE_NAME: &str = "mega_mailer_secret";
 
@@ -24,7 +24,8 @@ pub struct SessionKeystore {
 impl SessionKeystore {
     pub fn new() -> SessionKeystore {
         SessionKeystore {
-            key: HmacSha256::new_from_slice(CONFIG.get::<String>("web.cookie_key").as_bytes()).unwrap(),
+            key: HmacSha256::new_from_slice(CONFIG.get::<String>("web.cookie_key").as_bytes())
+                .unwrap(),
         }
     }
 }
@@ -131,13 +132,26 @@ impl SessionManager {
 }
 
 #[axum::async_trait]
-impl<B> FromRequest<B> for SessionManager where B: Send {
+impl<B> FromRequest<B> for SessionManager
+where
+    B: Send,
+{
     type Rejection = axum::http::StatusCode;
 
     async fn from_request(req: &mut RequestParts<B>) -> std::result::Result<Self, Self::Rejection> {
-        let keystore =  req.extensions().unwrap().get::<SessionKeystore>().cloned().unwrap();
+        let keystore = req
+            .extensions()
+            .unwrap()
+            .get::<SessionKeystore>()
+            .cloned()
+            .unwrap();
         let cookies = req.extensions().unwrap().get::<Cookies>().cloned().unwrap();
-        let storage = req.extensions().unwrap().get::<Arc<Storage>>().cloned().unwrap();
+        let storage = req
+            .extensions()
+            .unwrap()
+            .get::<Arc<Storage>>()
+            .cloned()
+            .unwrap();
         Ok(SessionManager {
             keystore,
             cookies,

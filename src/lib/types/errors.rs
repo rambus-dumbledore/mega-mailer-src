@@ -73,11 +73,17 @@ pub enum Error {
     InternalError(InternalError),
 }
 
-use axum::{response::{IntoResponse}, http::{Response, StatusCode, header::CONTENT_TYPE}, body::{self, BoxBody}};
+use axum::{
+    body::{self, BoxBody},
+    http::{header::CONTENT_TYPE, Response, StatusCode},
+    response::IntoResponse,
+};
 
 impl IntoResponse for Error {
     fn into_response(self) -> Response<BoxBody> {
-        let body = body::boxed(body::Full::from(json!({ "error": format!("{}", self) }).to_string()));
+        let body = body::boxed(body::Full::from(
+            json!({ "error": format!("{}", self) }).to_string(),
+        ));
         Response::builder()
             .header(CONTENT_TYPE, "application/json")
             .status(StatusCode::from_u16(500).unwrap())

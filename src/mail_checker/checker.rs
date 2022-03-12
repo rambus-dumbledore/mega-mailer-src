@@ -1,3 +1,4 @@
+use chrono::{DateTime, Duration, TimeZone, Timelike, Utc};
 use imap;
 use log::{debug, error};
 use rustls_connector::{RustlsConnector, TlsStream};
@@ -5,11 +6,10 @@ use rustyknife::rfc2047::encoded_word;
 use std::iter::FromIterator;
 use std::net::TcpStream;
 use teloxide::utils::markdown::escape;
-use chrono::{Timelike, DateTime, Utc, TimeZone, Duration};
 
 use common::cfg::CONFIG;
 use common::storage::{MailAccount, Storage};
-use common::types::{Error, MailCheckerError, Result, TelegramMessageTask, ImportanceChecker};
+use common::types::{Error, ImportanceChecker, MailCheckerError, Result, TelegramMessageTask};
 use std::sync::Arc;
 
 pub struct Checker {
@@ -23,7 +23,11 @@ impl Checker {
         let host = CONFIG.get::<String>("mail.address");
         let port = CONFIG.get::<u16>("mail.port");
         let storage = Storage::new().expect("Could not connect to storage").into();
-        Checker { host, port, storage }
+        Checker {
+            host,
+            port,
+            storage,
+        }
     }
 
     fn build_stream(&self) -> Result<TlsStream<TcpStream>> {
@@ -49,7 +53,12 @@ impl Checker {
         None
     }
 
-    fn process_message(&self, message: &imap::types::Fetch, username: &String, importance_checker: &ImportanceChecker) {
+    fn process_message(
+        &self,
+        message: &imap::types::Fetch,
+        username: &String,
+        importance_checker: &ImportanceChecker,
+    ) {
         let envelope = message.envelope();
         if let None = envelope {
             let error = Error::MailCheckerError(MailCheckerError::EmptyEnvelope);
@@ -91,19 +100,24 @@ impl Checker {
             format!("*{}*\n{}", escape(email.as_str()), escape(subject.as_str()))
         };
 
-        let work_hours =  self.storage.get_user_working_hours(&username);
+        let work_hours = self.storage.get_user_working_hours(&username);
         let send_after = if let Some(work_hours) = work_hours {
             let moscow_offset = chrono::FixedOffset::east(3 * 3600);
             let now = chrono::Utc::now().with_timezone(&moscow_offset);
             let mut send_after: DateTime<Utc> = DateTime::from(now);
-            if (now.hour() as u8) < work_hours[0]  {
+            if (now.hour() as u8) < work_hours[0] {
                 let naive = now.naive_utc().date();
-                send_after = Utc.from_utc_date(&naive)
-                    .and_hms(work_hours[0] as u32, 0, 0) - Duration::hours(3);
+                send_after = Utc
+                    .from_utc_date(&naive)
+                    .and_hms(work_hours[0] as u32, 0, 0)
+                    - Duration::hours(3);
             } else if (now.hour() as u8) >= work_hours[1] {
                 let naive = now.naive_utc().date();
-                send_after = (Utc.from_utc_date(&naive) + Duration::days(1))
-                    .and_hms(work_hours[0] as u32, 0, 0) - Duration::hours(3);
+                send_after = (Utc.from_utc_date(&naive) + Duration::days(1)).and_hms(
+                    work_hours[0] as u32,
+                    0,
+                    0,
+                ) - Duration::hours(3);
             }
             send_after
         } else {
@@ -141,7 +155,10 @@ impl Checker {
         };
 
         let importance_checker = ImportanceChecker::new(&*self.storage, username);
-        debug!("ImportanceChecker for user {} was built: {:?}", username, importance_checker);
+        debug!(
+            "ImportanceChecker for user {} was built: {:?}",
+            username, importance_checker
+        );
 
         let folders = session.list(None, Some("INBOX*")).unwrap();
         for folder in folders.iter() {
@@ -153,7 +170,8 @@ impl Checker {
             }
 
             let available_uids = Vec::from_iter(unseen.iter());
-            let to_fetch_uids = self.storage
+            let to_fetch_uids = self
+                .storage
                 .filter_unprocessed(username, available_uids.as_slice())
                 .unwrap();
 

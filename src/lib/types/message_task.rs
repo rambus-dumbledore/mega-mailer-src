@@ -39,7 +39,7 @@ impl FromRedisValue for TelegramMessageTask {
                         RedisError::from((
                             ErrorKind::TypeError,
                             "Could not deserialize TelegramMessageTask struct",
-                            format!("{}", e)
+                            format!("{}", e),
                         ))
                     })?;
                 return Ok(task);

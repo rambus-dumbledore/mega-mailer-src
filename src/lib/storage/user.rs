@@ -1,7 +1,10 @@
-use axum::{http::StatusCode, extract::{FromRequest, RequestParts}};
+use axum::{
+    extract::{FromRequest, RequestParts},
+    http::StatusCode,
+};
 use serde::{Deserialize, Serialize};
-use tower_cookies::Cookies;
 use std::sync::Arc;
+use tower_cookies::Cookies;
 
 use crate::sessions::{SessionKeystore, SessionManager};
 use crate::storage::Storage;
@@ -13,18 +16,31 @@ pub struct User {
 }
 
 #[axum::async_trait]
-impl<B> FromRequest<B> for User where B: Send {
+impl<B> FromRequest<B> for User
+where
+    B: Send,
+{
     type Rejection = (axum::http::StatusCode, &'static str);
 
     async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
-        let keystore =  req.extensions().unwrap().get::<SessionKeystore>().cloned().unwrap();
+        let keystore = req
+            .extensions()
+            .unwrap()
+            .get::<SessionKeystore>()
+            .cloned()
+            .unwrap();
         let cookies = req.extensions().unwrap().get::<Cookies>().cloned().unwrap();
-        let storage = req.extensions().unwrap().get::<Arc<Storage>>().cloned().unwrap();
+        let storage = req
+            .extensions()
+            .unwrap()
+            .get::<Arc<Storage>>()
+            .cloned()
+            .unwrap();
         let mut sm = SessionManager::new(cookies, keystore, storage);
         if sm.is_authorized() {
-           Ok(sm.get_user().unwrap())
+            Ok(sm.get_user().unwrap())
         } else {
-           Err((StatusCode::UNAUTHORIZED, "Unauthorized"))
+            Err((StatusCode::UNAUTHORIZED, "Unauthorized"))
         }
     }
 }

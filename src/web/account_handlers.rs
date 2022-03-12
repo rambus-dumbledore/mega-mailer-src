@@ -1,10 +1,16 @@
-use axum::{Router, extract::Extension, routing::{get}, Json, response::IntoResponse};
+use axum::{extract::Extension, response::IntoResponse, routing::get, Json, Router};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use common::{storage::{MailAccount, Storage, User}, types::Result};
+use common::{
+    storage::{MailAccount, Storage, User},
+    types::Result,
+};
 
-async fn get_account_settings(user: User, Extension(storage): Extension<Arc<Storage>>) -> Json<Option<MailAccount>> {
+async fn get_account_settings(
+    user: User,
+    Extension(storage): Extension<Arc<Storage>>,
+) -> Json<Option<MailAccount>> {
     let account = storage.get_mail_account(&user.username);
     Json(account)
 }
@@ -29,7 +35,10 @@ async fn set_account_settings(
     Ok(Json(SetAccountResponse { changed }))
 }
 
-async fn get_checking_state(user: User, Extension(storage): Extension<Arc<Storage>>) -> Result<impl IntoResponse> {
+async fn get_checking_state(
+    user: User,
+    Extension(storage): Extension<Arc<Storage>>,
+) -> Result<impl IntoResponse> {
     let res = storage.is_checking_enabled(&user.username)?;
     Ok(Json(res))
 }
@@ -54,6 +63,9 @@ async fn set_checking(
 
 pub fn account_routes() -> Router {
     Router::new()
-        .route("/account", get(get_account_settings).post(set_account_settings))
+        .route(
+            "/account",
+            get(get_account_settings).post(set_account_settings),
+        )
         .route("/checking", get(get_checking_state).post(set_checking))
 }

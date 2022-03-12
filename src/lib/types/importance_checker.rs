@@ -3,16 +3,16 @@ use crate::storage::Storage;
 #[derive(Debug)]
 pub struct ImportanceChecker {
     important_emails: Vec<String>,
-    tags: Vec<String>
+    tags: Vec<String>,
 }
 
 impl ImportanceChecker {
     pub fn new(storage: &Storage, username: &String) -> ImportanceChecker {
         let important_emails = storage.get_important_emails(username).unwrap_or(vec![]);
         let tags = storage.get_important_tags(username).unwrap_or(vec![]);
-        ImportanceChecker{
+        ImportanceChecker {
             important_emails,
-            tags
+            tags,
         }
     }
 

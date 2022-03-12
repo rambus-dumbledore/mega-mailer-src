@@ -1,9 +1,9 @@
 mod errors;
+mod importance_checker;
 mod message_task;
 mod result;
-mod importance_checker;
 
 pub use errors::*;
+pub use importance_checker::ImportanceChecker;
 pub use message_task::TelegramMessageTask;
 pub use result::Result;
-pub use importance_checker::ImportanceChecker;

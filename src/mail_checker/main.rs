@@ -1,17 +1,17 @@
 mod checker;
 
+use clokwerk::TimeUnits;
 use log::error;
+use pretty_env_logger;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use pretty_env_logger;
-use clokwerk::{TimeUnits};
 
 use checker::Checker;
-use common::types::*;
-use common::storage::{Storage};
-use common::heartbeat::HeartbeatService;
 use common::ctrlc_handler::set_ctrlc_handler;
+use common::heartbeat::HeartbeatService;
+use common::storage::Storage;
+use common::types::*;
 
 fn main_impl() -> Result<()> {
     let running = Arc::new(AtomicBool::new(true));
