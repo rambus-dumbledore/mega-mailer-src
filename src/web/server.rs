@@ -14,7 +14,7 @@ use crate::importance_settings_handlers::importance_settings_routes;
 use crate::notify_settings_handlers::notify_settings_routes;
 
 async fn index() -> Redirect {
-    Redirect::found("/static/index.html".parse().unwrap())
+    Redirect::permanent("/static/index.html")
 }
 
 pub async fn init_server_instance() -> (axum::Router, String, u16) {
@@ -38,8 +38,8 @@ pub async fn init_server_instance() -> (axum::Router, String, u16) {
         .nest("/api", account_routes())
         .nest("/api", notify_settings_routes())
         .nest("/api", importance_settings_routes())
-        .nest("/assets", assets_service)
-        .nest("/static", static_service)
+        .route("/assets", assets_service)
+        .route("/static", static_service)
         .route("/", get(index));
 
     (

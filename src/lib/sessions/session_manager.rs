@@ -141,14 +141,12 @@ where
     async fn from_request(req: &mut RequestParts<B>) -> std::result::Result<Self, Self::Rejection> {
         let keystore = req
             .extensions()
-            .unwrap()
             .get::<SessionKeystore>()
             .cloned()
             .unwrap();
-        let cookies = req.extensions().unwrap().get::<Cookies>().cloned().unwrap();
+        let cookies = req.extensions().get::<Cookies>().cloned().unwrap();
         let storage = req
             .extensions()
-            .unwrap()
             .get::<Arc<Storage>>()
             .cloned()
             .unwrap();

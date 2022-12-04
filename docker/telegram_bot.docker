@@ -1,5 +1,3 @@
-FROM builder:latest as builder
-
-FROM scratch
+FROM alpine
 COPY --from=builder /build/target/release/telegram_bot /opt/mega-mailer/telegram_bot
 COPY config.yaml /opt/mega-mailer

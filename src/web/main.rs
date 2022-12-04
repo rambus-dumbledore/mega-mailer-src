@@ -5,7 +5,7 @@ mod importance_settings_handlers;
 mod notify_settings_handlers;
 mod server;
 
-use axum::AddExtensionLayer;
+use axum::Extension;
 use log::error;
 use pretty_env_logger;
 use std::sync::Arc;
@@ -34,8 +34,8 @@ fn main() {
 
         let (router, address, port) = init_server_instance().await;
         let app = router
-            .layer(AddExtensionLayer::new(storage))
-            .layer(AddExtensionLayer::new(session_keystore))
+            .layer(Extension(storage))
+            .layer(Extension(session_keystore))
             .layer(CookieManagerLayer::new());
 
         let addr: std::net::SocketAddr = format!("{}:{}", address, port).parse().unwrap();

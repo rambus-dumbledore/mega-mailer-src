@@ -1,19 +1,19 @@
 mod checker;
 
+use anyhow::Context;
 use clokwerk::TimeUnits;
-use log::error;
-use pretty_env_logger;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use tracing::level_filters::LevelFilter;
+use tracing_subscriber::{fmt, prelude::*, registry::Registry};
 
 use checker::Checker;
 use common::ctrlc_handler::set_ctrlc_handler;
 use common::heartbeat::HeartbeatService;
 use common::storage::Storage;
-use common::types::*;
 
-fn main_impl() -> Result<()> {
+fn main_impl() -> anyhow::Result<()> {
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
 
@@ -24,7 +24,10 @@ fn main_impl() -> Result<()> {
     let heartbeat_service = HeartbeatService::new("MAIL_CHECKER".into(), storage);
     heartbeat_service.run();
 
-    let checker = Arc::pin(Checker::new());
+    let checker = Arc::pin(Checker::new()
+        .with_context(|| "Cound not create checker")?);
+
+    tracing::info!("Started mail checker");
 
     let mut scheduler = clokwerk::Scheduler::with_tz(chrono::FixedOffset::east(3 * 3600));
     scheduler.every(1.minute()).run(move || {
@@ -40,11 +43,19 @@ fn main_impl() -> Result<()> {
 }
 
 fn main() {
-    pretty_env_logger::init();
-
     let _guard = common::sentry::init_sentry();
 
+    let fmt_layer = fmt::layer()
+        .with_target(false)
+        .with_filter(LevelFilter::TRACE);
+
+    Registry::default()
+        .with(sentry::integrations::tracing::layer())
+        .with(fmt_layer)
+        .try_init()
+        .unwrap();
+
     if let Err(e) = main_impl() {
-        error!("MailChecker finished with error: {}", e)
+        tracing::error!("MailChecker finished with error: {}", e)
     };
 }

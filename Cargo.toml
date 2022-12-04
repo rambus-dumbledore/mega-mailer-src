@@ -5,10 +5,10 @@ authors = ["Ilya Volchenkov <ivolchenkov@megaputer.ru>"]
 edition = "2021"
 
 [dependencies]
-axum = "0.4.0"
-cookie = "0.16.0"
-tower-cookies = "0.5.1"
-tower-http = { version = "0.2.3", features = ["fs"] }
+axum = "=0.5.17"
+cookie = "=0.16.1"
+tower-cookies = "=0.8.0"
+tower-http = { version = "=0.3.5", features = ["fs"] }
 jwt = "0.16.0"
 hmac = "0.12.1"
 sha2 = "0.10.2"
@@ -18,12 +18,13 @@ serde_cbor = "0.11"
 tokio = { version = "1.14.0", features = ["full"]}
 tokio-util = "0.7.0"
 tokio-stream = "0.1.8"
-teloxide = { version = "0.7.1", default-features = false, features = ["rustls", "macros", "ctrlc_handler", "dispatching2"] }
+teloxide-core = { version = "=0.8.0", default-features = false, features = ["rustls"] }
+teloxide = { version = "=0.11.3", default-features = false, features = ["rustls", "macros", "ctrlc_handler"] }
 futures = "0.3"
-redis = "0.21.4"
+redis = "0.22.1"
 log = "0.4"
 pretty_env_logger = "0.4"
-config = { version = "0.12.0", default-features = false, features = ["yaml"] }
+config = { version = "0.13.2", default-features = false, features = ["yaml"] }
 rand = "0.8.4"
 regex = "1.4"
 lazy_static = "1.4"
@@ -31,17 +32,18 @@ cbc = "0.1.1"
 aes = "0.8.1"
 thiserror = "1.0"
 imap = { version = "=2.4.1", default-features = false }
-rustls-connector = { version = "=0.15.0" }
+rustls-connector = { version = "=0.16.1" }
 clokwerk = "0.3.5"
 rustyknife = "0.2"
-reqwest = { version = "0.11", default-features = false, features = ["rustls-tls"] }
-uuid = "0.8"
+reqwest = { version = "=0.11.13", default-features = false, features = ["rustls-tls"] }
+uuid = "1.1.2"
 ctrlc = "3.1"
 chrono = { version = "0.4", features = ["serde"] }
-sentry = { git = "https://github.com/getsentry/sentry-rust", default-features = false, features = ["anyhow", "reqwest", "rustls", "backtrace", "contexts", "panic", "log", "tracing"] }
-
-[patch.crates-io]
-teloxide-core = { git = "https://github.com/teloxide/teloxide-core" }
+sentry = { version = "=0.29.1", default-features = false, features = ["backtrace", "contexts", "panic", "anyhow", "debug-images", "reqwest", "rustls", "tracing"] }
+anyhow = "1.0.66"
+sentry-anyhow = "0.29.1"
+tracing = "0.1.37"
+tracing-subscriber = "0.3.16"
 
 [lib]
 name = "common"

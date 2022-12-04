@@ -74,13 +74,13 @@ pub enum Error {
 }
 
 use axum::{
-    body::{self, BoxBody},
+    body::{self},
     http::{header::CONTENT_TYPE, Response, StatusCode},
     response::IntoResponse,
 };
 
 impl IntoResponse for Error {
-    fn into_response(self) -> Response<BoxBody> {
+    fn into_response(self) -> axum::response::Response {
         let body = body::boxed(body::Full::from(
             json!({ "error": format!("{}", self) }).to_string(),
         ));

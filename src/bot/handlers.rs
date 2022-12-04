@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use teloxide::prelude2::*;
+use teloxide::prelude::*;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 
@@ -24,14 +24,19 @@ pub async fn process_set_avatar_command(
     }
     let username = username.unwrap();
 
-    let avatars = bot.get_user_profile_photos(msg.chat.id).send().await?;
+    if !msg.chat.is_private() {
+        return Ok(());
+    }
+    let user_id = UserId(msg.chat.id.0 as u64);
+
+    let avatars = bot.get_user_profile_photos(user_id).send().await?;
     if avatars.total_count != 0 {
         let avatar = &avatars.photos[0][0];
-        let avatar_file = bot.get_file(&avatar.file_id).send().await?;
+        let avatar_file = bot.get_file(&avatar.file.unique_id).send().await?;
         let url = format!(
             "https://api.telegram.org/file/bot{}/{}",
             bot.token(),
-            avatar_file.file_path
+            avatar_file.unique_id
         );
         let data = reqwest::get(url).await?;
 

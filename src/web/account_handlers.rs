@@ -28,9 +28,9 @@ struct SetAccountResponse {
 
 async fn set_account_settings(
     user: User,
-    params: Json<SetAccountParams>,
+    Json(params): Json<SetAccountParams>,
     Extension(storage): Extension<Arc<Storage>>,
-) -> Result<impl IntoResponse> {
+) -> Result<Json<SetAccountResponse>> {
     let changed = storage.set_mail_account(&user.username, &params.email, &params.password)?;
     Ok(Json(SetAccountResponse { changed }))
 }
@@ -38,7 +38,7 @@ async fn set_account_settings(
 async fn get_checking_state(
     user: User,
     Extension(storage): Extension<Arc<Storage>>,
-) -> Result<impl IntoResponse> {
+) -> Result<Json<bool>> {
     let res = storage.is_checking_enabled(&user.username)?;
     Ok(Json(res))
 }
@@ -51,7 +51,7 @@ struct SetCheckingParams {
 async fn set_checking(
     user: User,
     Extension(storage): Extension<Arc<Storage>>,
-    params: Json<SetCheckingParams>,
+    Json(params): Json<SetCheckingParams>,
 ) -> Result<impl IntoResponse> {
     if params.state {
         let _ = storage.enable_checking(&user.username)?;

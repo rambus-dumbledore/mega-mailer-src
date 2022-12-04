@@ -31,12 +31,12 @@ async fn main_impl() -> Result<()> {
 }
 
 fn main() {
+    pretty_env_logger::init();
     let _guard = common::sentry::init_sentry();
 
     tokio::runtime::Runtime::new()
         .expect("Could not initialize asynchronous runtime")
         .block_on(async move {
-            teloxide::enable_logging!();
             if let Err(e) = main_impl().await {
                 error!("TelegramBot finished with error: {}", e);
             }

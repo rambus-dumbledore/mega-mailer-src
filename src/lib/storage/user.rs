@@ -1,6 +1,6 @@
 use axum::{
     extract::{FromRequest, RequestParts},
-    http::StatusCode,
+    http::{StatusCode},
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -25,14 +25,12 @@ where
     async fn from_request(req: &mut RequestParts<B>) -> Result<Self, Self::Rejection> {
         let keystore = req
             .extensions()
-            .unwrap()
             .get::<SessionKeystore>()
             .cloned()
             .unwrap();
-        let cookies = req.extensions().unwrap().get::<Cookies>().cloned().unwrap();
+        let cookies = req.extensions().get::<Cookies>().cloned().unwrap();
         let storage = req
             .extensions()
-            .unwrap()
             .get::<Arc<Storage>>()
             .cloned()
             .unwrap();

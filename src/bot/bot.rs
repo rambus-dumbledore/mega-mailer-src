@@ -2,11 +2,11 @@ use log::error;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use teloxide::{
-    dispatching2::UpdateFilterExt,
-    prelude2::*,
+    dispatching::UpdateFilterExt,
+    prelude::*,
     types::ParseMode::MarkdownV2,
     types::{KeyboardButton, KeyboardMarkup, Message},
-    utils::command::BotCommand,
+    utils::command::BotCommands,
 };
 
 use common::cfg::CONFIG;
@@ -23,8 +23,8 @@ pub struct TelegramBot {
     running: Arc<AtomicBool>,
 }
 
-#[derive(BotCommand, Clone)]
-#[command(rename = "lowercase", description = "Simple commands")]
+#[derive(BotCommands, Clone)]
+#[command(rename_rule = "lowercase", description = "Simple commands")]
 enum Command {
     Attach(String),
     SetAvatar,
@@ -92,8 +92,8 @@ impl TelegramBot {
             .error_handler(LoggingErrorHandler::with_custom_text(
                 "An error has occurred in the dispatcher",
             ))
+            .enable_ctrlc_handler()
             .build()
-            .setup_ctrlc_handler()
             .dispatch()
             .await;
     }
