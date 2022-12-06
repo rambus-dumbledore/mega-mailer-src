@@ -36,7 +36,8 @@ impl Cipher {
     }
 
     pub fn encrypt(&self, data: &[u8]) -> Vec<u8> {
-        let mut buf = data.to_owned();
+        let mut buf = [0u8; 64];
+        buf[..data.len()].copy_from_slice(data);
         let cipher = self.get_encryptor();
         cipher
             .encrypt_padded_mut::<Pkcs7>(&mut buf, data.len())

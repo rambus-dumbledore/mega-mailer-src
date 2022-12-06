@@ -13,9 +13,6 @@ use crate::heartbeat_handlers::heartbeat_handlers;
 use crate::importance_settings_handlers::importance_settings_routes;
 use crate::notify_settings_handlers::notify_settings_routes;
 
-async fn index() -> Redirect {
-    Redirect::permanent("/static/index.html")
-}
 
 pub async fn init_server_instance() -> (axum::Router, String, u16) {
     let assets_service = get_service(ServeDir::new(CONFIG.get::<String>("file_storage.path")))
@@ -39,8 +36,7 @@ pub async fn init_server_instance() -> (axum::Router, String, u16) {
         .nest("/api", notify_settings_routes())
         .nest("/api", importance_settings_routes())
         .route("/assets", assets_service)
-        .route("/static", static_service)
-        .route("/", get(index));
+        .fallback(static_service);
 
     (
         router,
