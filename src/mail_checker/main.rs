@@ -47,7 +47,7 @@ fn main() {
 
     let fmt_layer = fmt::layer()
         .with_target(false)
-        .with_filter(LevelFilter::TRACE);
+        .with_filter(LevelFilter::WARN);
 
     Registry::default()
         .with(sentry::integrations::tracing::layer())

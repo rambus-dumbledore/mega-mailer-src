@@ -103,20 +103,24 @@ impl Checker {
         let send_after = if let Some(work_hours) = work_hours {
             let moscow_offset = chrono::FixedOffset::east(3 * 3600);
             let now = chrono::Utc::now().with_timezone(&moscow_offset);
-            let mut send_after: DateTime<Utc> = DateTime::from(now);
-            if (now.hour() as u8) < work_hours[0] {
-                let naive = now.naive_utc().date();
-                send_after = Utc
-                    .from_utc_date(&naive)
-                    .and_hms(work_hours[0] as u32, 0, 0)
-                    - Duration::hours(3);
-            } else if (now.hour() as u8) >= work_hours[1] {
-                let naive = now.naive_utc().date();
-                send_after = (Utc.from_utc_date(&naive) + Duration::days(1)).and_hms(
-                    work_hours[0] as u32,
-                    0,
-                    0,
-                ) - Duration::hours(3);
+
+            let from = now
+                .with_hour(work_hours[0] as u32).unwrap_or(now)
+                .with_minute(0).unwrap()
+                .with_second(0).unwrap();
+            let to = now
+                .with_hour(work_hours[1] as u32).unwrap_or(now)
+                .with_minute(0).unwrap()
+                .with_second(0).unwrap();
+            
+            let mut send_after = chrono::Utc::now();
+            let utc_offset = chrono::Utc{};
+            if from <= now && now <= to {
+                send_after = now.with_timezone(&utc_offset)
+            } else if to < now {
+                send_after = from.checked_add_days(chrono::Days::new(1)).unwrap().with_timezone(&utc_offset)
+            } else if now < from {
+                send_after = to.with_timezone(&utc_offset)
             }
             send_after
         } else {

@@ -1,4 +1,5 @@
-use log::error;
+use anyhow::Context;
+use tracing::{error, warn};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use teloxide::{
@@ -86,7 +87,7 @@ impl TelegramBot {
         Dispatcher::builder(bot, messages_handler)
             .dependencies(dptree::deps![storage, bot_name])
             .default_handler(|upd| async move {
-                log::warn!("Unhandled update: {:?}", upd);
+                warn!("Unhandled update: {:?}", upd);
             })
             // If the dispatcher fails for some reason, execute this handler.
             .error_handler(LoggingErrorHandler::with_custom_text(
@@ -103,8 +104,14 @@ impl TelegramBot {
             let queue = self
                 .storage
                 .get_send_message_tasks_queue()
-                .expect("Could not fetch message queue");
-            for (ref key, ref task) in queue {
+                .with_context(|| "Could not fetch message queue");
+            
+            if let Err(e) = queue {
+                error!("Error occured: {}", e);
+                continue;
+            }
+
+            for (ref key, ref task) in queue.unwrap() {
                 if !task.important && !task.can_send_now() {
                     continue;
                 }

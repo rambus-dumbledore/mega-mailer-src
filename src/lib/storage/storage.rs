@@ -1,4 +1,5 @@
-use log::error;
+use tracing::{error, instrument};
+use anyhow::{self, Context};
 use redis::{Commands, FromRedisValue, ToRedisArgs};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -142,16 +143,20 @@ impl<Type: BaseStorage> RedisStorage<Type> {
         self.set(key, data)
     }
 
+    #[instrument(skip(self), fields(generic_type = std::any::type_name::<T>()))]
     fn get_bin<T>(&self, key: &String) -> Option<T>
     where
         T: DeserializeOwned,
     {
         let data = self.get::<Vec<u8>>(&key).ok()?;
 
-        match serde_cbor::from_slice::<T>(data.as_slice()) {
+        match serde_cbor::from_slice::<T>(data.as_slice())
+            .with_context(|| format!("data = {:?}", data))
+            .with_context(|| format!("key = {}", key))
+        {
             Ok(data) => Some(data),
             Err(e) => {
-                error!("Deserialization error: {}", e);
+                error!("Deserialization error: {:?}", e);
                 None
             }
         }
@@ -361,6 +366,7 @@ impl RedisStorage<MainStorage> {
         self.set_bin(&key, &encrypted_account)
     }
 
+    #[instrument(skip(self))]
     pub fn get_mail_account(&self, username: &String) -> Option<MailAccount> {
         let key = format!("ACCOUNT:{}", username);
         let encrypted_account = self.get_bin::<MailAccountEncrypted>(&key);
@@ -445,6 +451,7 @@ impl RedisStorage<MainStorage> {
         self.hdel(&key, id)
     }
 
+    #[instrument(skip(self))]
     pub fn get_user_working_hours(&self, username: &String) -> Option<Vec<u8>> {
         let key = format!("WORKING_HOURS:{}", username);
         self.get_bin(&key)

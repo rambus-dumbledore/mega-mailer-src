@@ -1,6 +1,6 @@
 use config::{Config, Environment, File};
 use lazy_static::lazy_static;
-use log::{error, trace};
+use tracing::{error, trace};
 use serde::Deserialize;
 use std::fmt::Display;
 

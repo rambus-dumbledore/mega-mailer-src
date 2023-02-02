@@ -1,5 +1,5 @@
 use crate::storage::Storage;
-use log::error;
+use tracing::error;
 use std::pin::Pin;
 use std::sync::Arc;
 

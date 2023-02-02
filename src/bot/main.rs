@@ -1,10 +1,12 @@
 mod bot;
 mod handlers;
 
-use log::error;
+use tracing::error;
 use std::pin::Pin;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use tracing::level_filters::LevelFilter;
+use tracing_subscriber::{fmt, prelude::*, registry::Registry};
 
 use common::ctrlc_handler::set_ctrlc_handler;
 use common::heartbeat::HeartbeatService;
@@ -31,8 +33,17 @@ async fn main_impl() -> Result<()> {
 }
 
 fn main() {
-    pretty_env_logger::init();
     let _guard = common::sentry::init_sentry();
+
+    let fmt_layer = fmt::layer()
+        .with_target(false)
+        .with_filter(LevelFilter::WARN);
+
+    Registry::default()
+        .with(sentry::integrations::tracing::layer())
+        .with(fmt_layer)
+        .try_init()
+        .unwrap();
 
     tokio::runtime::Runtime::new()
         .expect("Could not initialize asynchronous runtime")
