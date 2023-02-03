@@ -1,4 +1,4 @@
-use axum::extract::{FromRequest, RequestParts};
+use axum::{extract::FromRequestParts, http::request::Parts};
 use hmac::{Hmac, Mac};
 use jwt::{SignWithKey, VerifyWithKey};
 use sha2::Sha256;
@@ -132,21 +132,21 @@ impl SessionManager {
 }
 
 #[axum::async_trait]
-impl<B> FromRequest<B> for SessionManager
+impl<S> FromRequestParts<S> for SessionManager
 where
-    B: Send,
+    S: Send + Sync,
 {
     type Rejection = axum::http::StatusCode;
 
-    async fn from_request(req: &mut RequestParts<B>) -> std::result::Result<Self, Self::Rejection> {
+    async fn from_request_parts(req: &mut Parts, _state: &S) -> std::result::Result<Self, Self::Rejection> {
         let keystore = req
-            .extensions()
+            .extensions
             .get::<SessionKeystore>()
             .cloned()
             .unwrap();
-        let cookies = req.extensions().get::<Cookies>().cloned().unwrap();
+        let cookies = req.extensions.get::<Cookies>().cloned().unwrap();
         let storage = req
-            .extensions()
+            .extensions
             .get::<Arc<Storage>>()
             .cloned()
             .unwrap();

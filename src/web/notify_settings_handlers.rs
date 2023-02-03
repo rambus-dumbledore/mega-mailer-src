@@ -1,4 +1,4 @@
-use axum::{extract::Extension, response::IntoResponse, routing::get, Json, Router};
+use axum::{extract::Extension, routing::get, Json, Router};
 
 use common::{
     storage::{Storage, User},

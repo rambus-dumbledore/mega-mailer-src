@@ -86,7 +86,7 @@ impl IntoResponse for Error {
         ));
         Response::builder()
             .header(CONTENT_TYPE, "application/json")
-            .status(StatusCode::from_u16(500).unwrap())
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
             .body(body)
             .unwrap()
     }

@@ -5,43 +5,43 @@ authors = ["Ilya Volchenkov <ivolchenkov@megaputer.ru>"]
 edition = "2021"
 
 [dependencies]
-axum = "=0.5.17"
-cookie = "=0.16.1"
+axum = "=0.6.4"
+cookie = "=0.16.2"
 tower-cookies = "=0.8.0"
 tower-http = { version = "=0.3.5", features = ["fs"] }
-jwt = "0.16.0"
-hmac = "0.12.1"
-sha2 = "0.10.2"
-serde = "1.0"
-serde_json = "1.0"
-serde_cbor = "0.11"
-tokio = { version = "1.14.0", features = ["full"]}
-tokio-util = "0.7.0"
-tokio-stream = "0.1.8"
+jwt = "=0.16.0"
+hmac = "=0.12.1"
+sha2 = "=0.10.6"
+serde = "=1.0.152"
+serde_json = "=1.0.91"
+serde_cbor = "=0.11.2"
+tokio = { version = "=1.25.0", features = ["full"]}
+tokio-util = "=0.7.4"
+tokio-stream = "=0.1.11"
 teloxide-core = { version = "=0.9.0", default-features = false, features = ["rustls"] }
 teloxide = { version = "=0.12.0", default-features = false, features = ["rustls", "macros", "ctrlc_handler"] }
-futures = "0.3"
-redis = "0.22.1"
-config = { version = "0.13.2", default-features = false, features = ["yaml"] }
-rand = "0.8.4"
-regex = "1.4"
-lazy_static = "1.4"
+futures = "=0.3.26"
+redis = "=0.22.3"
+config = { version = "0.13.3", default-features = false, features = ["yaml"] }
+rand = "=0.8.5"
+regex = "=1.7.1"
+lazy_static = "=1.4.0"
 cbc = "=0.1.2"
 aes = "=0.8.2"
-thiserror = "1.0"
+thiserror = "=1.0.38"
 imap = { version = "=2.4.1", default-features = false }
 rustls-connector = { version = "=0.16.1" }
-clokwerk = "0.3.5"
-rustyknife = "0.2"
+clokwerk = "=0.4.0"
+rustyknife = "=0.2.11"
 reqwest = { version = "=0.11.14", default-features = false, features = ["rustls-tls"] }
-uuid = "1.1.2"
-ctrlc = "3.1"
-chrono = { version = "0.4", features = ["serde"] }
-sentry = { version = "=0.29.1", default-features = false, features = ["backtrace", "contexts", "panic", "anyhow", "debug-images", "reqwest", "rustls", "tracing"] }
+uuid = "=1.3.0"
+ctrlc = "=3.2.4"
+chrono = { version = "=0.4.23", features = ["serde"] }
+sentry = { version = "=0.29.2", default-features = false, features = ["backtrace", "contexts", "panic", "anyhow", "debug-images", "reqwest", "rustls", "tracing"] }
 anyhow = "=1.0.68"
-sentry-anyhow = "0.29.1"
-tracing = "0.1.37"
-tracing-subscriber = "0.3.16"
+sentry-anyhow = "=0.29.2"
+tracing = "=0.1.37"
+tracing-subscriber = "=0.3.16"
 
 [lib]
 name = "common"

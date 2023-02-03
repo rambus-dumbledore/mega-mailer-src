@@ -1,4 +1,4 @@
-use chrono::{DateTime, Duration, TimeZone, Timelike, Utc};
+use chrono::Timelike;
 use imap;
 use rustls_connector::{RustlsConnector, TlsStream};
 use rustyknife::rfc2047::encoded_word;

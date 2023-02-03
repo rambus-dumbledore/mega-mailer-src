@@ -1,7 +1,6 @@
 use axum::{
     http::StatusCode,
-    response::Redirect,
-    routing::{get, get_service},
+    routing::{get_service, MethodRouter},
     Router,
 };
 use common::cfg::CONFIG;
@@ -15,20 +14,22 @@ use crate::notify_settings_handlers::notify_settings_routes;
 
 
 pub async fn init_server_instance() -> (axum::Router, String, u16) {
-    let assets_service = get_service(ServeDir::new(CONFIG.get::<String>("file_storage.path")))
-        .handle_error(|error: std::io::Error| async move {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Unhandled internal error: {}", error),
-            )
-        });
-    let static_service = get_service(ServeDir::new(CONFIG.get::<String>("web.static_path")))
-        .handle_error(|error: std::io::Error| async move {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Unhandled internal error: {}", error),
-            )
-        });
+    let assets_service = get_service(
+        ServeDir::new(CONFIG.get::<String>("file_storage.path")))
+            .handle_error(|error: std::io::Error| async move {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Unhandled internal error: {}", error),
+                )
+            });
+    let static_service: MethodRouter = get_service(
+        ServeDir::new(CONFIG.get::<String>("web.static_path")))
+            .handle_error(|error: std::io::Error| async move {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Unhandled internal error: {}", error),
+                )
+            });
     let router = Router::new()
         .merge(auth_routes())
         .nest("/api", heartbeat_handlers())
@@ -36,7 +37,7 @@ pub async fn init_server_instance() -> (axum::Router, String, u16) {
         .nest("/api", notify_settings_routes())
         .nest("/api", importance_settings_routes())
         .route("/assets", assets_service)
-        .fallback(static_service);
+        .fallback_service(static_service);
 
     (
         router,

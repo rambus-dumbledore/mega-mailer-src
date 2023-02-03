@@ -3,14 +3,14 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use common::{
-    storage::{MailAccount, Storage, User},
+    storage::{Storage, User},
     types::Result,
 };
 
 async fn get_account_settings(
     user: User,
     Extension(storage): Extension<Arc<Storage>>,
-) -> Json<Option<MailAccount>> {
+) -> impl IntoResponse {
     let account = storage.get_mail_account(&user.username);
     Json(account)
 }
@@ -21,16 +21,16 @@ struct SetAccountParams {
     pub password: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 struct SetAccountResponse {
     changed: bool,
 }
 
 async fn set_account_settings(
     user: User,
-    Json(params): Json<SetAccountParams>,
     Extension(storage): Extension<Arc<Storage>>,
-) -> Result<Json<SetAccountResponse>> {
+    Json(params): Json<SetAccountParams>,
+) -> Result<impl IntoResponse> {
     let changed = storage.set_mail_account(&user.username, &params.email, &params.password)?;
     Ok(Json(SetAccountResponse { changed }))
 }

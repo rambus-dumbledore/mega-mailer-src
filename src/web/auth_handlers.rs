@@ -21,7 +21,7 @@ struct LoginParams {
 async fn login(
     mut sm: SessionManager,
     Json(params): Json<LoginParams>,
-) -> Result<impl IntoResponse> {
+) -> impl IntoResponse {
     sm.authenticate(&params.username, &params.code)
 }
 
