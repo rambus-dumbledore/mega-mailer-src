@@ -7,8 +7,10 @@ use axum::{
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
+use anyhow::anyhow;
+use tower_cookies::{Cookie, Cookies};
 
-use common::sessions::SessionManager;
+use common::{sessions::{SessionManager, WebAppInitData}, cfg::CONFIG};
 use common::storage::{Storage, User};
 use common::types::{AuthError, Error, Result, TelegramMessageTask};
 
@@ -85,6 +87,40 @@ async fn whoami(user: User) -> impl IntoResponse {
 
 async fn logout(mut sm: SessionManager) -> impl IntoResponse {
     sm.logout();
+}
+
+#[derive(Debug, Deserialize)]
+struct AuthParams {
+    pub init_data: String,
+}
+
+async fn auth(
+    Extension(redis_client): Extension<Client>,
+    // Extension(cfg): Extension<CfgPtr>,
+    cookies: Cookies,
+    Json(params): Json<AuthParams>,
+) -> impl IntoResponse {
+    let init_data = WebAppInitData::try_from(params.init_data.as_str())
+        .map_err(|e| anyhow!(e))?;
+    let bot_token: String = CONFIG.get("bot_token");
+    init_data.validate(&bot_token)?;
+
+    let user_id = match init_data.user {
+        Some(user) => user.id,
+        _ => return Err(anyhow!("Empty user field").into())
+    };
+
+    let cookie = uuid::Uuid::new_v4().to_string();
+    let mut con = redis_client.get_connection()?;
+    con.set(format!("COOKIE:{}", cookie), user_id)?;
+
+    let cookie = Cookie::build("WEDNESDAY", cookie)
+        .http_only(true)
+        .secure(true)
+        .finish();
+    cookies.add(cookie);
+
+    Ok(())
 }
 
 pub fn auth_routes() -> Router {

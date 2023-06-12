@@ -5,8 +5,7 @@ use sha2::Sha256;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use cookie::SameSite;
-use tower_cookies::{Cookie, Cookies};
+use tower_cookies::{Cookie, Cookies, cookie::SameSite};
 
 use crate::cfg::CONFIG;
 use crate::storage::{Storage, User};
