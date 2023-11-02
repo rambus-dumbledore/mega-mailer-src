@@ -1,50 +1,77 @@
+use std::path::PathBuf;
+use anyhow::{anyhow, Result};
 use config::{Config, Environment, File};
-use lazy_static::lazy_static;
-use tracing::{error, trace};
-use serde::Deserialize;
-use std::fmt::Display;
 
-pub struct Cfg(Config);
+#[derive(Clone)]
+pub struct WebCfg {
+    pub address: std::net::SocketAddr,
+    pub static_path: std::path::PathBuf,
+    pub cookie_key: String,
+}
+
+#[derive(Clone)]
+pub struct StorageCfg {
+    pub redis: String,
+    pub postgres: String,
+    pub key: String,
+    pub iv: String,
+}
+
+#[derive(Clone)]
+pub struct BotCfg {
+    pub token: String,
+}
+
+#[derive(Clone)]
+pub struct MailCfg {
+    pub address: String,
+    pub port: u16,
+}
+
+#[derive(Clone)]
+pub struct Cfg {
+    pub debug: bool,
+    pub web: WebCfg,
+    pub storage: StorageCfg,
+    pub bot: BotCfg,
+    pub mail: MailCfg,
+}
 
 impl Cfg {
-    pub fn get<'de, T>(&self, key: &str) -> T
-    where
-        T: Display + Deserialize<'de>,
-    {
-        self.get_or_default(key, None)
-    }
+    pub fn build(cfg: Config) -> Result<Self> {
+        let debug = cfg.get_bool("debug")?;
 
-    pub fn get_or_default<'de, T>(&self, key: &str, default: Option<T>) -> T
-    where
-        T: Display + Deserialize<'de>,
-    {
-        trace!(target: "Config", "trying access to config with key \"{}\"", key);
-        let res = self.0.get::<T>(key);
-        if let Ok(value) = res {
-            trace!(target: "Config", "value \"{}\" with key \"{}\" was get successfully", value, key);
-            return value;
-        } else {
-            let err = res.err().unwrap();
-            error!(target: "Config", "error while getting value with key \"{}\"", key);
-            error!(target: "Config", "{}", err);
+        let address: std::net::SocketAddr = cfg.get_string("web.address")?.parse()?;
+        println!("{:?}", address);
+        let static_path: PathBuf = cfg.get_string("web.static_path")?.into();
+        if !static_path.exists() {
+            return Err(anyhow!("`web.static_path` value is not correct: {}", static_path.display()));
         }
-        if let Some(value) = default {
-            trace!(target: "Config", "using default value \"{}\" for key \"{}\"", value, key);
-            return value;
-        }
-        panic!("x_x too baaaad");
+        let cookie_key = cfg.get_string("web.cookie_key")?;
+        let web = WebCfg{ address, static_path, cookie_key };
+
+        let redis = cfg.get_string("storage.redis")?;
+        let postgres = cfg.get_string("storage.postgres")?;
+        let key = cfg.get_string("storage.key")?;
+        let iv = cfg.get_string("storage.iv")?;
+        let storage = StorageCfg{ redis, postgres, key, iv };
+
+        let token = cfg.get_string("bot.secret")?;
+        let bot = BotCfg{ token };
+
+        let address = cfg.get_string("mail.address")?;
+        let port: u16 = cfg.get_int("mail.port")? as u16;
+        let mail = MailCfg{ address, port };
+
+        Ok(Cfg{ debug, web, storage, bot, mail })
     }
 }
 
-fn build_config() -> Cfg {
-    let settings = Config::builder()
+pub fn build_config() -> Result<Cfg> {
+    let cfg = Config::builder()
         .add_source(File::with_name("config"))
         .add_source(Environment::with_prefix("APP"))
         .build()
         .unwrap();
-    Cfg(settings)
-}
-
-lazy_static! {
-    pub static ref CONFIG: Cfg = build_config();
+    Cfg::build(cfg)
 }

@@ -1,74 +1,37 @@
-use axum::{extract::FromRequestParts, http::request::Parts};
-use hmac::{Hmac, Mac};
-use jwt::{SignWithKey, VerifyWithKey};
-use sha2::Sha256;
-use std::collections::BTreeMap;
 use std::sync::Arc;
-
+use axum::{extract::FromRequestParts, http::request::Parts};
 use tower_cookies::{Cookie, Cookies, cookie::SameSite};
 
-use crate::cfg::CONFIG;
-use crate::storage::{Storage, User};
+use crate::storage::Storage;
 use crate::types::*;
-
-type HmacSha256 = Hmac<Sha256>;
+use super::WebAppUser;
 
 const COOKIE_NAME: &str = "mega_mailer_secret";
 
-#[derive(Clone)]
-pub struct SessionKeystore {
-    pub key: Hmac<Sha256>,
-}
-
-impl SessionKeystore {
-    pub fn new() -> SessionKeystore {
-        SessionKeystore {
-            key: HmacSha256::new_from_slice(CONFIG.get::<String>("web.cookie_key").as_bytes())
-                .unwrap(),
-        }
-    }
-}
-
 pub struct SessionManager {
     cookies: Cookies,
-    keystore: SessionKeystore,
     storage: Arc<Storage>,
 }
 
 impl SessionManager {
     pub fn new(
         cookies: Cookies,
-        keystore: SessionKeystore,
         storage: Arc<Storage>,
     ) -> SessionManager {
         SessionManager {
             cookies,
-            keystore,
             storage,
         }
     }
 
-    pub fn authenticate(&mut self, user_name: &String, code: &String) -> Result<()> {
-        let telegram_id = self.storage.get_telegram_id(user_name);
-        if telegram_id.is_err() {
-            return Err(Error::AuthorizationError(AuthError::UserNotRegistered));
+    pub async fn auth_v2(&mut self, user: &WebAppUser) -> Result<()> {
+        let cookie = uuid::Uuid::new_v4().to_string();
+        self.storage.set_session_v2(&cookie, &user).await?;
+
+        if !self.storage.is_user_registed(user).await? {
+            self.storage.register_user(user).await?;
         }
 
-        let login_request = self.storage.get_login_request(code);
-        if login_request.is_none() {
-            return Err(Error::AuthorizationError(AuthError::AuthCodeInvalid));
-        }
-
-        let mut claims = BTreeMap::new();
-        claims.insert("username", user_name);
-        let cookie = SignWithKey::sign_with_key(claims, &self.keystore.key).unwrap();
-
-        let user = User {
-            username: user_name.clone(),
-            photo: None,
-        };
-
-        self.storage.set_session(&user)?;
         self.cookies.add(
             Cookie::build(COOKIE_NAME, cookie)
                 .same_site(SameSite::Lax)
@@ -78,55 +41,46 @@ impl SessionManager {
         Ok(())
     }
 
-    fn get_tree(&mut self) -> Option<BTreeMap<String, String>> {
+    pub async fn is_authorized_v2(&mut self) -> Result<bool> {
+        let cookie = match self.get_cookie() {
+            Some(cookie) => cookie,
+            None => return Ok(false)
+        };
+        match self.storage.get_session_v2(&cookie).await? {
+            Some(_) => Ok(true),
+            None => Ok(false)
+        }
+    }
+
+    fn get_cookie(&self) -> Option<String> {
         let cookie = self.cookies.get(COOKIE_NAME);
-        if let Some(cookie) = cookie {
-            let token = cookie.value();
-            let result = VerifyWithKey::<BTreeMap<String, String>>::verify_with_key(
-                token,
-                &self.keystore.key,
-            );
-            if let Ok(tree) = result {
-                return Some(tree);
-            }
-            return None;
-        }
-        return None;
+        let cookie = match cookie {
+            Some(cookie) => {
+                cookie
+            },
+            None => return None
+        };
+        Some(cookie.value().to_owned())
     }
 
-    pub fn is_authorized(&mut self) -> bool {
-        if let Some(_) = self.get_tree() {
-            return true;
+    pub async fn get_user_v2(&self) -> Result<WebAppUser> {
+        let cookie = match self.get_cookie() {
+            Some(cookie) => cookie,
+            None => return Err(Error::InternalError(InternalError::RuntimeError(format!("Unauthorized"))))
+        };
+        match self.storage.get_session_v2(&cookie).await? {
+            Some(user) => Ok(user),
+            None => Err(Error::InternalError(InternalError::RuntimeError(format!("Unauthorized"))))
         }
-        return false;
     }
 
-    pub fn get_user(&mut self) -> Option<User> {
-        if let Some(tree) = self.get_tree() {
-            let username = tree.get("username").unwrap().clone();
-            let user = self.storage.get_session(&username);
-
-            if let Some(mut user) = user {
-                if let Ok(photo) = self.storage.get_user_avatar(&username) {
-                    user.photo = Some(format!("/assets/{}", photo));
-                }
-                return Some(user);
-            }
-            return None;
-        }
-        None
-    }
-
-    pub fn logout(&mut self) {
-        let tree = self.get_tree();
-        match tree {
-            Some(tree) => {
-                let username = tree.get("username").unwrap().clone();
-                self.storage.remove_session(&username);
-                self.cookies.remove(Cookie::named(COOKIE_NAME));
-            }
-            _ => {}
-        }
+    pub async fn logout_v2(&mut self) {
+        let ref cookie = match self.get_cookie() {
+            Some(cookie) => cookie,
+            None => return
+        };
+        self.storage.remove_session_v2(cookie).await.ok();
+        self.cookies.remove(Cookie::named(COOKIE_NAME));
     }
 }
 
@@ -138,11 +92,6 @@ where
     type Rejection = axum::http::StatusCode;
 
     async fn from_request_parts(req: &mut Parts, _state: &S) -> std::result::Result<Self, Self::Rejection> {
-        let keystore = req
-            .extensions
-            .get::<SessionKeystore>()
-            .cloned()
-            .unwrap();
         let cookies = req.extensions.get::<Cookies>().cloned().unwrap();
         let storage = req
             .extensions
@@ -150,7 +99,6 @@ where
             .cloned()
             .unwrap();
         Ok(SessionManager {
-            keystore,
             cookies,
             storage,
         })

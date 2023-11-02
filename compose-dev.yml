@@ -1,0 +1,25 @@
+version: '3'
+
+services:
+  redis:
+    image: redis:latest
+    # command: >
+    #       --requirepass redispw
+    restart: unless-stopped
+    ports:
+      - 6379:6379
+    # volumes:
+    #   - .volumes/redis:/data
+
+  postgres:
+    image: postgres:latest
+    restart: unless-stopped
+    environment:
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=db
+      - POSTGRES_USER=user
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    ports:
+      - '5436:5432'
+    # volumes:
+    #   - .volumes/pg:/var/lib/postgresql/data

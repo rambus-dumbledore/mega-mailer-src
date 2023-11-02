@@ -1,504 +1,306 @@
-use tracing::{error, instrument};
-use anyhow::{self, Context};
-use redis::{Commands, FromRedisValue, ToRedisArgs};
-use serde::de::DeserializeOwned;
-use serde::Serialize;
-use serde_cbor;
+use bb8_redis::redis::AsyncCommands;
+use anyhow::Result;
+
 use std::collections::{BTreeMap, HashSet};
-use std::marker::PhantomData;
-use std::sync::{Arc, RwLock};
+use std::str::FromStr;
 
-use crate::cfg::CONFIG;
+use crate::cfg::Cfg;
+use crate::sessions::WebAppUser;
 use crate::storage::mail_account::MailAccountEncrypted;
-use crate::storage::{AttachRequest, LoginRequest, MailAccount, User};
-use crate::types::{Error, Result, TelegramMessageTask};
+use crate::storage::MailAccount;
+use crate::types::TelegramMessageTask;
 
-pub trait BaseStorage {}
+use super::cipher::Cipher;
+
+type PGPool = bb8::Pool<bb8_postgres::PostgresConnectionManager<bb8_postgres::tokio_postgres::NoTls>>;
+type RedisPool = bb8::Pool<bb8_redis::RedisConnectionManager>;
 
 #[derive(Clone)]
-pub struct RedisStorage<T: BaseStorage> {
-    client: redis::Client,
-    connection: Arc<RwLock<redis::Connection>>,
-    phantom: PhantomData<T>,
+pub struct Storage {
+    pg: PGPool,
+    redis: RedisPool,
 }
 
-impl<T: BaseStorage> RedisStorage<T> {
-    pub fn new() -> Result<RedisStorage<T>> {
-        let client =
-            redis::Client::open(format!("redis://{}", CONFIG.get::<String>("storage.redis")))?;
-        let connection = Arc::new(RwLock::new(client.get_connection()?));
-        Ok(RedisStorage {
-            client,
-            connection,
-            phantom: PhantomData,
+impl Storage {
+    pub async fn new(cfg: &Cfg) -> Result<Self> {
+        let pg_config = bb8_postgres::tokio_postgres::Config::from_str(&cfg.storage.postgres)?;
+        let pg_man = bb8_postgres::PostgresConnectionManager::new(pg_config, bb8_postgres::tokio_postgres::NoTls);
+        let redis_man = bb8_redis::RedisConnectionManager::new(cfg.storage.redis.clone())?;
+        let pg =  bb8::Pool::builder().build(pg_man).await?;
+        let redis =  bb8::Pool::builder().build(redis_man).await?;
+        Ok(Self{
+            pg,
+            redis
         })
     }
-}
 
-impl<Type: BaseStorage> RedisStorage<Type> {
-    fn get_impl<T: FromRedisValue>(&self, key: &String) -> Result<T> {
-        self.connection
-            .write()?
-            .get(key.as_str())
-            .map_err(|e| Error::from(e))
+    pub async fn get_session_v2(&self, cookie: &str) -> Result<Option<WebAppUser>> {
+        let key = format!("SESSION:{}", cookie);
+        let mut conn = self.redis.get().await?;
+        let id: Option<i64> = conn.get(key).await?;
+        match id {
+            Some(id) => Ok(Some(id.into())),
+            None => Ok(None)
+        }
     }
 
-    fn set_impl<T: ToRedisArgs, KV: FromRedisValue>(&self, key: &String, value: T) -> Result<KV> {
-        self.connection
-            .write()?
-            .set(key.as_str(), value)
-            .map_err(|e| Error::from(e))
+    pub async fn remove_session_v2(&self, cookie: &str) -> Result<bool> {
+        let key = format!("SESSION:{}", cookie);
+        let mut conn = self.redis.get().await?;
+        let res = conn.del(key).await?;
+        Ok(res)
     }
 
-    fn del_impl<KV: FromRedisValue>(&self, key: &String) -> Result<KV> {
-        self.connection
-            .write()?
-            .del(key.as_str())
-            .map_err(|e| Error::from(e))
+    pub async fn set_session_v2(&self, cookie: &str, user: &WebAppUser) -> Result<bool> {
+        let key = format!("SESSION:{}", cookie);
+        let mut conn = self.redis.get().await?;
+        let res = conn.set(&key, user.id).await?;
+        conn.expire(&key, 3600).await?;
+        Ok(res)
     }
 
-    fn sadd_impl<T: ToRedisArgs, KV: FromRedisValue>(&self, key: &String, value: T) -> Result<KV> {
-        self.connection
-            .write()?
-            .sadd(key.as_str(), value)
-            .map_err(|e| Error::from(e))
-    }
-
-    fn sismember_impl<T: ToRedisArgs, KV: FromRedisValue>(
+    pub async fn set_mail_account(
         &self,
-        key: &String,
-        value: T,
-    ) -> Result<KV> {
-        self.connection
-            .write()?
-            .sismember(key.as_str(), value)
-            .map_err(|e| Error::from(e))
-    }
-
-    fn srem_impl<T: ToRedisArgs, KV: FromRedisValue>(&self, key: &String, value: T) -> Result<KV> {
-        self.connection
-            .write()?
-            .srem(key.as_str(), value)
-            .map_err(|e| Error::from(e))
-    }
-
-    fn smembers_impl<KV: FromRedisValue>(&self, key: &String) -> Result<KV> {
-        self.connection
-            .write()?
-            .smembers(key.as_str())
-            .map_err(|e| Error::from(e))
-    }
-
-    fn hkeys_impl<KV: FromRedisValue>(&self, key: &String) -> Result<KV> {
-        self.connection
-            .write()?
-            .hkeys(key.as_str())
-            .map_err(|e| Error::from(e))
-    }
-
-    fn hgetall_impl<KV: FromRedisValue>(&self, key: &String) -> Result<KV> {
-        self.connection
-            .write()?
-            .hgetall(key.as_str())
-            .map_err(|e| Error::from(e))
-    }
-
-    fn hget_impl<KV: FromRedisValue>(&self, key: &String, field: &String) -> Result<KV> {
-        self.connection
-            .write()?
-            .hget(key.as_str(), field.as_str())
-            .map_err(|e| Error::from(e))
-    }
-
-    fn hset_impl<KV: ToRedisArgs, R: FromRedisValue>(
-        &self,
-        key: &String,
-        field: &String,
-        value: KV,
-    ) -> Result<R> {
-        self.connection
-            .write()?
-            .hset(key.as_str(), field.as_str(), value)
-            .map_err(|e| Error::from(e))
-    }
-
-    fn hdel_impl<R: FromRedisValue>(&self, key: &String, field: &String) -> Result<R> {
-        self.connection
-            .write()?
-            .hdel(key.as_str(), field.as_str())
-            .map_err(|e| Error::from(e))
-    }
-
-    fn set<T: ToRedisArgs>(&self, key: &String, value: T) -> Result<bool> {
-        let res = self.set_impl(key, value);
-        res.map_err(|e| Error::from(e))
-    }
-
-    fn get<T: FromRedisValue>(&self, key: &String) -> Result<T> {
-        self.get_impl::<T>(key).map_err(|e| Error::from(e))
-    }
-
-    fn set_bin<T: Serialize>(&self, key: &String, value: &T) -> Result<bool> {
-        let data = serde_cbor::to_vec(value)?;
-        self.set(key, data)
-    }
-
-    #[instrument(skip(self), fields(generic_type = std::any::type_name::<T>()))]
-    fn get_bin<T>(&self, key: &String) -> Option<T>
-    where
-        T: DeserializeOwned,
-    {
-        let data = self.get::<Vec<u8>>(&key).ok()?;
-
-        match serde_cbor::from_slice::<T>(data.as_slice())
-            .with_context(|| format!("data = {:?}", data))
-            .with_context(|| format!("key = {}", key))
-        {
-            Ok(data) => Some(data),
-            Err(e) => {
-                error!("Deserialization error: {:?}", e);
-                None
-            }
-        }
-    }
-
-    fn del(&self, key: &String) -> Result<()> {
-        let res = self.del_impl::<()>(key);
-
-        if res.is_ok() {
-            return Ok(());
-        }
-
-        Err(Error::from(res.unwrap_err()))
-    }
-
-    fn sadd<T: ToRedisArgs>(&self, key: &String, value: T) -> Result<bool> {
-        let res = self.sadd_impl::<T, u8>(key, value);
-        if let Ok(res) = res {
-            return Ok(res == 1);
-        }
-
-        Err(Error::from(res.unwrap_err()))
-    }
-
-    fn sismember<T: ToRedisArgs>(&self, key: &String, value: T) -> Result<bool> {
-        let res = self.sismember_impl::<T, u8>(key, value);
-        if let Ok(res) = res {
-            return Ok(res == 1);
-        }
-
-        Err(Error::from(res.unwrap_err()))
-    }
-
-    fn srem<T: ToRedisArgs>(&self, key: &String, value: T) -> Result<bool> {
-        let res = self.srem_impl::<T, u8>(key, value);
-        if let Ok(res) = res {
-            return Ok(res == 1);
-        }
-
-        Err(Error::from(res.unwrap_err()))
-    }
-
-    fn smembers<KV: FromRedisValue>(&self, key: &String) -> Result<KV> {
-        let res = self.smembers_impl::<KV>(key);
-        if let Ok(res) = res {
-            return Ok(res);
-        }
-
-        Err(Error::from(res.err().unwrap()))
-    }
-
-    fn hkeys<KV: FromRedisValue>(&self, key: &String) -> Result<KV> {
-        self.hkeys_impl::<KV>(key)
-    }
-
-    fn hgetall<KV: FromRedisValue>(&self, key: &String) -> Result<KV> {
-        self.hgetall_impl::<KV>(key)
-    }
-
-    fn hget<KV: FromRedisValue>(&self, key: &String, field: &String) -> Result<KV> {
-        self.hget_impl::<KV>(key, field)
-    }
-
-    fn hset<KV: ToRedisArgs + FromRedisValue, R: FromRedisValue>(
-        &self,
-        key: &String,
-        field: &String,
-        value: KV,
-    ) -> Result<R> {
-        self.hset_impl::<KV, R>(key, field, value)
-    }
-
-    fn hdel<R: FromRedisValue>(&self, key: &String, field: &String) -> Result<R> {
-        self.hdel_impl(key, field)
-    }
-}
-
-#[derive(Clone)]
-pub struct MainStorage;
-
-impl BaseStorage for MainStorage {}
-
-impl RedisStorage<MainStorage> {
-    pub fn get_session(&self, username: &String) -> Option<User> {
-        let key = format!("SESSION:{}", username);
-        let data = self.get::<Vec<u8>>(&key);
-        if let Ok(data) = data {
-            return serde_cbor::from_slice(data.as_slice()).unwrap_or_else(|e| {
-                error!("{}", Error::from(e));
-                None
-            });
-        }
-        None
-    }
-
-    pub fn set_session(&self, user: &User) -> Result<bool> {
-        let key = format!("SESSION:{}", user.username);
-        let data = serde_cbor::to_vec(&user)?;
-        self.set(&key, data)
-    }
-
-    pub fn remove_session(&self, username: &String) {
-        let key = format!("SESSION:{}", username);
-        self.del(&key).unwrap()
-    }
-
-    pub fn get_telegram_id(&self, username: &String) -> Result<String> {
-        let key = format!("TELEGRAM_ID:{}", username);
-        self.get::<String>(&key)
-    }
-
-    pub fn get_username(&self, telegram_id: &String) -> Result<String> {
-        let key = format!("USERNAME:{}", telegram_id);
-        self.get(&key)
-    }
-
-    pub fn set_telegram_id(&self, attach_request: &AttachRequest, telegram_id: &String) {
-        let key = format!("TELEGRAM_ID:{}", attach_request.username);
-        self.set(&key, telegram_id).unwrap();
-
-        let key = format!("USERNAME:{}", telegram_id);
-        self.set(&key, &attach_request.username).unwrap();
-    }
-
-    pub fn create_login_request(&self, username: &String) -> String {
-        let login_request = LoginRequest::new(username);
-        let key = format!("LOGIN:{}", &login_request.code);
-        self.set(&key, serde_cbor::to_vec(&login_request).unwrap())
-            .unwrap();
-        login_request.code
-    }
-
-    pub fn get_login_request(&self, code: &String) -> Option<LoginRequest> {
-        let key = format!("LOGIN:{}", code);
-        let data = self.get::<Vec<u8>>(&key);
-
-        match data {
-            Ok(data) => {
-                match self.del(&key) {
-                    Err(e) => {
-                        error!("Could not delete login request by key {}: {}", code, e);
-                    }
-                    _ => {}
-                }
-
-                match serde_cbor::from_slice::<LoginRequest>(data.as_slice()) {
-                    Ok(request) => {
-                        if request.is_valid() {
-                            return request.into();
-                        }
-                        None
-                    }
-                    Err(e) => {
-                        error!("Deserialization error: {}", e);
-                        None
-                    }
-                }
-            }
-            Err(e) => {
-                error!("Could not get login request by code {}: {}", code, e);
-                None
-            }
-        }
-    }
-
-    pub fn create_attach_request(&self, username: &String) -> Result<String> {
-        let attach_request = AttachRequest::new(username);
-        let key = format!("ATTACH:{}", &attach_request.code);
-        self.set(&key, serde_cbor::to_vec(&attach_request)?)?;
-        Ok(attach_request.code)
-    }
-
-    pub fn get_attach_request(&self, code: &String) -> Option<AttachRequest> {
-        let key = format!("ATTACH:{}", code);
-        let data = self.get::<Vec<u8>>(&key);
-        self.del(&key).unwrap();
-        match data {
-            Ok(data) => match serde_cbor::from_slice::<AttachRequest>(data.as_slice()) {
-                Ok(req) => {
-                    if req.is_valid() {
-                        return Some(req.into());
-                    }
-                    error!("Trying to get invalid attach request");
-                    None
-                }
-                _ => None,
-            },
-            Err(e) => {
-                error!("Could not get an attach request with code {}: {}", code, e);
-                None
-            }
-        }
-    }
-
-    pub fn set_mail_account(
-        &self,
-        username: &String,
+        user: &WebAppUser,
         email: &String,
         password: &String,
-    ) -> Result<bool> {
-        let key = format!("ACCOUNT:{}", username);
+        cipher: &Cipher
+    ) -> Result<()> {
         let account = MailAccount {
             email: email.clone(),
             password: password.clone(),
         };
-        let encrypted_account: MailAccountEncrypted = account.into();
-        self.set_bin(&key, &encrypted_account)
+        let encrypted_account = account.encrypt(cipher);
+        let conn = self.pg.get().await?;
+        let statement = conn.prepare(r#"
+            UPDATE "mail_accounts"
+            SET "username" = $1 AND "password" = $2
+            WHERE "id" = $3;
+
+            INSERT INTO "mail_accounts" ("id", "username", "password")
+            VALUES ($3, $1, $2)
+            WHERE NOT EXISTS (SELECT 1 FROM "mail_accounts" WHERE "id" = $3)
+        "#).await?;
+        conn.execute(&statement, &[&encrypted_account.email, &encrypted_account.password, &user.id]).await?;
+        Ok(())
     }
 
-    #[instrument(skip(self))]
-    pub fn get_mail_account(&self, username: &String) -> Option<MailAccount> {
-        let key = format!("ACCOUNT:{}", username);
-        let encrypted_account = self.get_bin::<MailAccountEncrypted>(&key);
-        if let Some(encrypted_account) = encrypted_account {
-            let account: MailAccount = encrypted_account.into();
-            return Some(account);
+    pub async fn get_mail_account(&self, user: &WebAppUser, cipher: &Cipher) -> Result<Option<MailAccount>> {
+        let conn = self.pg.get().await?;
+        let statement = conn.prepare(r#"
+            SELECT "username", "password"
+            FROM "mail_accounts"
+            WHERE "id" = $1
+        "#).await?;
+        let rows = conn.query(&statement, &[&user.id]).await?;
+        if rows.is_empty() {
+            return Ok(None);
         }
-        None
+
+        let row = &rows[0];
+        let enc_account = MailAccountEncrypted{
+            email: row.get(0),
+            password: row.get(1)
+        };
+        Ok(Some(enc_account.decrypt(cipher)))
     }
 
-    pub fn add_processed_mails(&self, username: &String, uids: &[u32]) -> Result<()> {
-        let key = format!("PROCESSED_MAIL:{}", username);
+    pub async fn add_processed_mails(&self, user: &WebAppUser, uids: &[u32]) -> Result<()> {
+        let key = format!("PROCESSED_MAIL:{}", user.id);
+        let mut conn = self.redis.get().await?;
         for uid in uids {
-            let res = self.sadd(&key, *uid);
-            if res.is_err() {
-                return Err(res.unwrap_err());
-            }
+            conn.sadd(&key, *uid).await?;
         }
         Ok(())
     }
 
-    pub fn filter_unprocessed(&self, username: &String, uids: &[&u32]) -> Result<Vec<u32>> {
+    pub async fn filter_unprocessed(&self, user: &WebAppUser, uids: &[&u32]) -> Result<Vec<u32>> {
         let mut unprocessed = Vec::<u32>::new();
-        let key = format!("PROCESSED_MAIL:{}", username);
+        let key = format!("PROCESSED_MAIL:{}", user.id);
+        let mut conn = self.redis.get().await?;
 
         for uid in uids {
-            let res = self.sismember(&key, **uid);
-            if res.is_err() {
-                return Err(res.unwrap_err());
-            }
-            if !res.unwrap() {
-                unprocessed.push(*uid.clone());
+            let exists: bool = conn.sismember(&key, **uid).await?;
+            if !exists {
+                unprocessed.push(**uid);
             }
         }
 
         Ok(unprocessed)
     }
 
-    pub fn is_checking_enabled(&self, username: &String) -> Result<bool> {
-        let key = format!("CHECKING_ENABLED");
-        self.sismember(&key, username)
+    pub async fn is_checking_enabled(&self, user: &WebAppUser) -> Result<bool> {
+        let conn = self.pg.get().await?;
+        let statement = conn.prepare(r#"
+            SELECT "checking" FROM "users"
+            WHERE "id" = $1
+        "#).await?;
+        let row = conn.query_one(&statement, &[&user.id]).await?;
+        Ok(row.get(0))
     }
 
-    pub fn disable_checking(&self, username: &String) -> Result<bool> {
-        let key = format!("CHECKING_ENABLED");
-        self.srem(&key, username)
+    pub async fn disable_checking(&self, user: &WebAppUser) -> Result<()> {
+        let conn = self.pg.get().await?;
+        let statement = conn.prepare(r#"
+            UPDATE "users"
+            SET "checking" = false
+            WHERE "id" = $1
+        "#).await?;
+        conn.execute(&statement, &[&user.id]).await?;
+        Ok(())
     }
 
-    pub fn enable_checking(&self, username: &String) -> Result<bool> {
-        let key = format!("CHECKING_ENABLED");
-        self.sadd(&key, username)
+    pub async fn enable_checking(&self, user: &WebAppUser) -> Result<()> {
+        let conn = self.pg.get().await?;
+        let statement = conn.prepare(r#"
+            UPDATE "users"
+            SET "checking" = true
+            WHERE "id" = $1
+        "#).await?;
+        conn.execute(&statement, &[&user.id]).await?;
+        Ok(())
     }
 
-    pub fn get_usernames_for_checking(&self) -> Result<HashSet<String>> {
-        let key = format!("CHECKING_ENABLED");
-        self.smembers(&key)
+    pub async fn get_users_for_checking(&self) -> Result<HashSet<WebAppUser>> {
+        let conn = self.pg.get().await?;
+        let statement = conn.prepare(r#"
+            SELECT "id" FROM "users"
+            WHERE "checking" = true
+        "#).await?;
+        let users = conn.query(&statement, &[]).await?.into_iter().
+            map(|row| row.get::<usize, i64>(0).into())
+            .collect();
+        Ok(users)
     }
 
-    pub fn set_user_avatar(&self, username: &String, filename: &String) -> Result<bool> {
-        let key = format!("AVATAR:{}", username);
-        self.set(&key, filename)
-    }
-
-    pub fn get_user_avatar(&self, username: &String) -> Result<String> {
-        let key = format!("AVATAR:{}", username);
-        self.get::<String>(&key)
-    }
-
-    pub fn get_send_message_tasks_queue(&self) -> Result<BTreeMap<String, TelegramMessageTask>> {
+    pub async fn get_send_message_tasks_queue(&self) -> Result<BTreeMap<String, TelegramMessageTask>> {
         let key = format!("TELEGRAM_MESSAGE_QUEUE");
-        self.hgetall(&key)
+        let mut conn = self.redis.get().await?;
+        let tasks_queue = conn.hgetall(key).await?;
+        Ok(tasks_queue)
     }
 
-    pub fn add_send_message_task_to_queue(&self, task: TelegramMessageTask) -> Result<bool> {
+    pub async fn add_send_message_task_to_queue(&self, task: TelegramMessageTask) -> Result<bool> {
         let key = format!("TELEGRAM_MESSAGE_QUEUE");
         let field = uuid::Uuid::new_v4().to_string();
-        self.hset(&key, &field, task)
+        let mut conn = self.redis.get().await?;
+        let res = conn.hset(&key, &field, task).await?;
+        Ok(res)
     }
 
-    pub fn remove_send_message_task_from_queue(&self, id: &String) -> Result<bool> {
+    pub async fn remove_send_message_task_from_queue(&self, id: &String) -> Result<bool> {
         let key = format!("TELEGRAM_MESSAGE_QUEUE");
-        self.hdel(&key, id)
+        let mut conn = self.redis.get().await?;
+        let res = conn.hdel(&key, id).await?;
+        Ok(res)
     }
 
-    #[instrument(skip(self))]
-    pub fn get_user_working_hours(&self, username: &String) -> Option<Vec<u8>> {
-        let key = format!("WORKING_HOURS:{}", username);
-        self.get_bin(&key)
+    pub async fn get_user_working_hours(&self, user: &WebAppUser) -> Result<[u8; 2]> {
+        let conn = self.pg.get().await?;
+        let statement = conn.prepare(r#"
+             SELECT ("working_hours").begin, ("working_hours").end
+             FROM "users"
+             WHERE "id" = $3
+        "#).await?;
+        let row = conn.query_one(&statement, &[&user.id]).await?;
+        let begin: i32 = row.get(0);
+        let end: i32 = row.get(1);
+        Ok([begin as u8, end as u8])
     }
 
-    pub fn set_user_working_hours(&self, username: &String, wh: &Vec<u8>) -> Result<bool> {
-        let key = format!("WORKING_HOURS:{}", username);
-        self.set_bin(&key, wh)
+    pub async fn set_user_working_hours(&self, user: &WebAppUser, wh: &[u8; 2]) -> Result<()> {
+       let conn = self.pg.get().await?;
+       let statement = conn.prepare(r#"
+            UPDATE "users"
+            SET "working_hours" = ($1, $2)
+            WHERE "id" = $3
+       "#).await?;
+       conn.execute(&statement, &[&(wh[0] as i32), &(wh[1] as i32), &user.id]).await?;
+       Ok(())
     }
 
-    pub fn get_important_emails(&self, username: &String) -> Option<Vec<String>> {
-        let key = format!("IMPORTANT_EMAILS:{}", username);
-        self.smembers(&key).ok()
+    pub async fn get_important_emails(&self, user: &WebAppUser) -> Result<Vec<String>> {
+        let conn = self.pg.get().await?;
+        let statement = conn.prepare(r#"
+            SELECT unnest("important_emails") from "users"
+            WHERE "id" = $1
+        "#).await?;
+        let rows = conn.query(&statement, &[&user.id]).await?;
+        Ok(rows.iter().map(|row| row.get(0)).collect())
     }
 
-    pub fn add_important_email(&self, username: &String, email: &String) -> Result<bool> {
-        let key = format!("IMPORTANT_EMAILS:{}", username);
-        self.sadd(&key, email)
+    pub async fn set_important_emails(&self, user: &WebAppUser, emails: &Vec<String>) -> Result<bool> {
+        let conn = self.pg.get().await?;
+        let emails_array = postgres_array::Array::from_vec(emails.clone(), 0);
+        let statement = conn.prepare(r#"
+            UPDATE "users"
+            SET "important_emails" = $1
+            WHERE "id" = $2
+        "#).await?;
+        conn.execute(&statement, &[&emails_array, &user.id]).await?;
+        Ok(true)
     }
 
-    pub fn remove_important_email(&self, username: &String, email: &String) -> Result<bool> {
-        let key = format!("IMPORTANT_EMAILS:{}", username);
-        self.srem(&key, email)
+    pub async fn get_important_tags(&self, user: &WebAppUser) -> Result<Vec<String>> {
+        let conn = self.pg.get().await?;
+        let statement = conn.prepare(r#"
+            SELECT unnest("important_tags") from "users"
+            WHERE "id" = $1
+        "#).await?;
+        let rows = conn.query(&statement, &[&user.id]).await?;
+        Ok(rows.iter().map(|row| row.get(0)).collect())
     }
 
-    pub fn get_important_tags(&self, username: &String) -> Option<Vec<String>> {
-        let key = format!("IMPORTANT_TAGS:{}", username);
-        self.smembers(&key).ok()
+    pub async fn set_important_tags(&self, user: &WebAppUser, tags: &Vec<String>) -> Result<()> {
+        let tags_array = postgres_array::Array::from_vec(tags.clone(), 0);
+        let conn = self.pg.get().await?;
+        let statement = conn.prepare(r#"
+            UPDATE "users"
+            SET "important_tags" = $1
+            WHERE "id" = $2
+        "#).await?;
+        conn.execute(&statement, &[&tags_array, &user.id]).await?;
+        Ok(())
     }
 
-    pub fn add_important_tag(&self, username: &String, tag: &String) -> Result<bool> {
-        let key = format!("IMPORTANT_TAGS:{}", username);
-        self.sadd(&key, tag)
+    pub async  fn set_heartbeat(&self, service: &String, timestamp: i64) -> Result<bool> {
+        let mut conn = self.redis.get().await?;
+        let res = conn.hset(&String::from("HEARTBEAT"), service, timestamp).await?;
+        Ok(res)
     }
 
-    pub fn remove_important_tag(&self, username: &String, tag: &String) -> Result<bool> {
-        let key = format!("IMPORTANT_TAGS:{}", username);
-        self.srem(&key, tag)
+    pub async fn get_heartbeat(&self) -> Result<BTreeMap<String, i64>> {
+        let mut conn = self.redis.get().await?;
+        let res = conn.hgetall(&String::from("HEARTBEAT")).await?;
+        Ok(res)
     }
 
-    pub fn set_heartbeat(&self, service: &String, timestamp: i64) -> Result<bool> {
-        self.hset(&String::from("HEARTBEAT"), service, timestamp)
+    pub async fn migrate_pg(&self, sql: &str) -> Result<()> {
+        let conn = self.pg.get().await?;
+        conn.simple_query(sql).await?;
+        Ok(())
     }
 
-    pub fn get_heartbeat(&self) -> Result<BTreeMap<String, i64>> {
-        self.hgetall(&String::from("HEARTBEAT"))
+    pub async fn register_user(&self, user: &WebAppUser) -> Result<()> {
+        let conn = self.pg.get().await?;
+        let statement = conn.prepare(r#"
+            INSERT INTO "users" ("id")
+            VALUES ($1);
+
+            INSERT INTO "working_hours" ("id", "begin", "end")
+            VALUES ($1, 10, 19);
+        "#).await?;
+        conn.execute(&statement, &[&user.id]).await?;
+        Ok(())
+    }
+
+    pub async fn is_user_registed(&self, user: &WebAppUser) -> Result<bool> {
+        let conn = self.pg.get().await?;
+        let statement = conn.prepare(r#"
+            SELECT 1 FROM "users"
+            WHERE "id" = $1
+        "#).await?;
+        let row = conn.query_opt(&statement, &[&user.id]).await?;
+        Ok(row.is_some())
     }
 }
-
-pub type Storage = RedisStorage<MainStorage>;

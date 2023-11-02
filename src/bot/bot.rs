@@ -1,4 +1,5 @@
 use anyhow::Context;
+use common::cfg::Cfg;
 use tracing::{error, warn};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -7,10 +8,8 @@ use teloxide::{
     prelude::*,
     types::ParseMode::MarkdownV2,
     types::{KeyboardButton, KeyboardMarkup, Message},
-    utils::command::BotCommands,
 };
 
-use common::cfg::CONFIG;
 use common::storage::Storage;
 use common::types::Error;
 
@@ -24,16 +23,9 @@ pub struct TelegramBot {
     running: Arc<AtomicBool>,
 }
 
-#[derive(BotCommands, Clone)]
-#[command(rename_rule = "lowercase", description = "Simple commands")]
-enum Command {
-    Attach(String),
-    SetAvatar,
-}
-
 impl TelegramBot {
-    pub fn new(storage: Pin<Arc<Storage>>, running: Arc<AtomicBool>) -> TelegramBot {
-        let token = CONFIG.get::<String>("bot.secret");
+    pub fn new(storage: Pin<Arc<Storage>>, cfg: &Cfg, running: Arc<AtomicBool>) -> TelegramBot {
+        let token = cfg.bot.token.clone();
         let bot = Bot::new(token);
 
         TelegramBot {
@@ -41,22 +33,6 @@ impl TelegramBot {
             storage,
             running,
         }
-    }
-
-    async fn command_endpoint(
-        bot: Bot,
-        msg: Message,
-        cmd: Command,
-        storage: Pin<Arc<Storage>>,
-    ) -> Result<(), Error> {
-        match cmd {
-            Command::Attach(code) => {
-                handlers::process_attach_command(bot, msg, storage, &code).await?
-            }
-            Command::SetAvatar => handlers::process_set_avatar_command(bot, msg, storage).await?,
-        };
-
-        Ok(())
     }
 
     async fn fetch_all_endpoint(
@@ -70,11 +46,6 @@ impl TelegramBot {
 
     pub async fn start_listener_thread(&self) {
         let messages_handler = Update::filter_message()
-            .branch(
-                dptree::entry()
-                    .filter_command::<Command>()
-                    .endpoint(TelegramBot::command_endpoint),
-            )
             .branch(
                 dptree::filter(|msg: Message| msg.text().eq(&Some("Fetch all emails")))
                     .endpoint(TelegramBot::fetch_all_endpoint),
@@ -103,7 +74,7 @@ impl TelegramBot {
         loop {
             let queue = self
                 .storage
-                .get_send_message_tasks_queue()
+                .get_send_message_tasks_queue().await
                 .with_context(|| "Could not fetch message queue");
             
             if let Err(e) = queue {
@@ -116,14 +87,14 @@ impl TelegramBot {
                     continue;
                 }
 
-                match TelegramBot::send_markdown(&self.bot, &self.storage, &task.to, &task.text)
+                match TelegramBot::send_markdown(&self.bot,  task.to, &task.text)
                     .await
                 {
                     Err(e) => {
                         error!("{}", e);
                     }
                     Ok(_) => {
-                        match self.storage.remove_send_message_task_from_queue(key) {
+                        match self.storage.remove_send_message_task_from_queue(key).await {
                             Err(e) => {
                                 error!("{}", e);
                             }
@@ -143,16 +114,15 @@ impl TelegramBot {
 
     pub async fn send_markdown(
         bot: &Bot,
-        storage: &Pin<Arc<Storage>>,
-        username: &String,
+        user_id: UserId,
         text: &String,
     ) -> Result<(), Error> {
-        let chat_id = storage.get_telegram_id(username)?;
         let reply_markup = KeyboardMarkup::new(vec![vec![KeyboardButton {
             text: "Fetch all emails".into(),
             request: None,
         }]])
-        .resize_keyboard(true);
+            .resize_keyboard(true);
+        let chat_id: ChatId = user_id.into();
         bot.send_message(chat_id, text)
             .parse_mode(MarkdownV2)
             .reply_markup(reply_markup)

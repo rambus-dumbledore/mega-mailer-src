@@ -1,10 +1,11 @@
-use redis::{ErrorKind, FromRedisValue, RedisError, RedisResult, RedisWrite, ToRedisArgs, Value};
+use bb8_redis::redis::{ErrorKind, FromRedisValue, RedisError, RedisResult, RedisWrite, ToRedisArgs, Value};
 use serde::{Deserialize, Serialize};
 use serde_cbor;
+use teloxide_core::types::UserId;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TelegramMessageTask {
-    pub to: String,
+    pub to: UserId,
     pub text: String,
     pub send_after: chrono::DateTime<chrono::Utc>,
     pub important: bool,

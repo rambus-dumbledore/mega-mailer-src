@@ -3,16 +3,17 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use common::{
-    storage::{Storage, User},
-    types::Result,
+    storage::{Storage, Cipher},
+    types::Result, sessions::WebAppUser,
 };
 
 async fn get_account_settings(
-    user: User,
+    user: WebAppUser,
     Extension(storage): Extension<Arc<Storage>>,
-) -> impl IntoResponse {
-    let account = storage.get_mail_account(&user.username);
-    Json(account)
+    Extension(cipher): Extension<Arc<Cipher>>
+) -> Result<impl IntoResponse> {
+    let account = storage.get_mail_account(&user, &cipher).await?;
+    Ok(Json(account))
 }
 
 #[derive(Deserialize)]
@@ -27,19 +28,20 @@ struct SetAccountResponse {
 }
 
 async fn set_account_settings(
-    user: User,
+    user: WebAppUser,
     Extension(storage): Extension<Arc<Storage>>,
+    Extension(cipher): Extension<Arc<Cipher>>,
     Json(params): Json<SetAccountParams>,
 ) -> Result<impl IntoResponse> {
-    let changed = storage.set_mail_account(&user.username, &params.email, &params.password)?;
-    Ok(Json(SetAccountResponse { changed }))
+    storage.set_mail_account(&user, &params.email, &params.password, &cipher).await?;
+    Ok(Json(SetAccountResponse { changed: true }))
 }
 
 async fn get_checking_state(
-    user: User,
+    user: WebAppUser,
     Extension(storage): Extension<Arc<Storage>>,
 ) -> Result<Json<bool>> {
-    let res = storage.is_checking_enabled(&user.username)?;
+    let res = storage.is_checking_enabled(&user).await?;
     Ok(Json(res))
 }
 
@@ -49,14 +51,14 @@ struct SetCheckingParams {
 }
 
 async fn set_checking(
-    user: User,
+    user: WebAppUser,
     Extension(storage): Extension<Arc<Storage>>,
     Json(params): Json<SetCheckingParams>,
 ) -> Result<impl IntoResponse> {
     if params.state {
-        let _ = storage.enable_checking(&user.username)?;
+        let _ = storage.enable_checking(&user).await?;
     } else {
-        let _ = storage.disable_checking(&user.username)?;
+        let _ = storage.disable_checking(&user).await?;
     }
     Ok(())
 }

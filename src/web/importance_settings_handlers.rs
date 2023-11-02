@@ -1,77 +1,39 @@
 use axum::{
-    extract::Extension, extract::Query, response::IntoResponse, routing::get, Json, Router,
+    extract::Extension, response::IntoResponse, routing::get, Json, Router,
 };
-use serde::Deserialize;
-
-use common::storage::{Storage, User};
-use common::types::Result;
 use std::sync::Arc;
+use common::sessions::WebAppUser;
 
-#[derive(Deserialize)]
-struct Email {
-    email: String,
-}
+use common::storage::Storage;
+use common::types::Result;
 
 async fn get_important_emails(
-    user: User,
+    user: WebAppUser,
     Extension(storage): Extension<Arc<Storage>>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse> {
     let emails: Vec<String> = storage
-        .get_important_emails(&user.username)
-        .unwrap_or(vec![])
-        .into();
-    Json(emails)
-}
-
-async fn add_important_email(
-    user: User,
-    Extension(storage): Extension<Arc<Storage>>,
-    Query(query): Query<Email>,
-) -> Result<impl IntoResponse> {
-    storage.add_important_email(&user.username, &query.email)?;
-    Ok(())
-}
-
-async fn remove_important_email(
-    user: User,
-    Extension(storage): Extension<Arc<Storage>>,
-    Query(query): Query<Email>,
-) -> Result<impl IntoResponse> {
-    storage.remove_important_email(&user.username, &query.email)?;
-    Ok(())
-}
-
-#[derive(Deserialize)]
-struct Tag {
-    tag: String,
+        .get_important_emails(&user).await
+        .unwrap_or(vec![]);
+    Ok(Json(emails))
 }
 
 async fn get_important_tags(
-    user: User,
+    user: WebAppUser,
     Extension(storage): Extension<Arc<Storage>>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse> {
     let tags: Vec<String> = storage
-        .get_important_tags(&user.username)
+        .get_important_tags(&user).await
         .unwrap_or(vec![])
         .into();
-    Json(tags)
+    Ok(Json(tags))
 }
 
-async fn add_important_tag(
-    user: User,
+async fn set_important_tags(
+    user: WebAppUser,
     Extension(storage): Extension<Arc<Storage>>,
-    Query(query): Query<Tag>,
+    Json(tags): Json<Vec<String>>,
 ) -> Result<impl IntoResponse> {
-    storage.add_important_tag(&user.username, &query.tag)?;
-    Ok(())
-}
-
-async fn remove_important_tag(
-    user: User,
-    Extension(storage): Extension<Arc<Storage>>,
-    Query(query): Query<Tag>,
-) -> Result<impl IntoResponse> {
-    storage.remove_important_tag(&user.username, &query.tag)?;
+    storage.set_important_tags(&user, &tags).await?;
     Ok(())
 }
 
@@ -80,13 +42,10 @@ pub fn importance_settings_routes() -> Router {
         .route(
             "/important_emails",
             get(get_important_emails)
-                .patch(add_important_email)
-                .delete(remove_important_email),
         )
         .route(
             "/important_tags",
             get(get_important_tags)
-                .patch(add_important_tag)
-                .delete(remove_important_tag),
+                .post(set_important_tags),
         )
 }

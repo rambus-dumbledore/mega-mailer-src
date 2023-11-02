@@ -1,22 +1,25 @@
 use aes::cipher::KeyIvInit;
 use aes::cipher::{block_padding::Pkcs7, BlockDecryptMut, BlockEncryptMut};
-use lazy_static::lazy_static;
+
+use crate::cfg::Cfg;
 
 type Aes128CbcEnc = cbc::Encryptor<aes::Aes128>;
 type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
 
-use crate::cfg::CONFIG;
 
 pub struct Cipher {
     key: String,
     iv: String,
 }
 
-lazy_static! {
-    pub static ref CIPHER: Cipher = Cipher::new();
-}
-
 impl Cipher {
+    pub fn new(cfg: &Cfg) -> Self {
+        Self{
+            key: cfg.storage.key.clone(),
+            iv: cfg.storage.iv.clone()
+        }
+    }
+
     fn get_encryptor(&self) -> Aes128CbcEnc {
         let key = self.key.as_bytes();
         let iv = self.iv.as_bytes();
@@ -27,12 +30,6 @@ impl Cipher {
         let key = self.key.as_bytes();
         let iv = self.iv.as_bytes();
         Aes128CbcDec::new(key.into(), iv.into())
-    }
-
-    pub fn new() -> Cipher {
-        let key = CONFIG.get::<String>("storage.key");
-        let iv = CONFIG.get::<String>("storage.iv");
-        Cipher { key, iv }
     }
 
     pub fn encrypt(&self, data: &[u8]) -> Vec<u8> {

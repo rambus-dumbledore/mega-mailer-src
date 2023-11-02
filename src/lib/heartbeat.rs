@@ -15,13 +15,15 @@ impl HeartbeatService {
 
     pub fn run(&self) {
         let (key, storage) = (self.key.clone(), self.storage.clone());
-        std::thread::spawn(move || loop {
-            let res = storage.set_heartbeat(&key, chrono::Utc::now().timestamp());
-            if let Err(e) = res {
-                error!(target: "Heartbeat", "Could not access to database: {}", e);
+        tokio::spawn( async move {
+            loop {
+                let res = storage.set_heartbeat(&key, chrono::Utc::now().timestamp()).await;
+                if let Err(e) = res {
+                    error!(target: "Heartbeat", "Could not access to database: {}", e);
+                }
+    
+                tokio::time::sleep(std::time::Duration::from_secs(15)).await;
             }
-
-            std::thread::sleep(std::time::Duration::from_secs(15));
         });
     }
 }

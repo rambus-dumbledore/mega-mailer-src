@@ -1,5 +1,10 @@
-use serde::Deserialize;
+use serde::{Serialize, Deserialize};
+use crate::sessions::SessionManager;
 use anyhow::anyhow;
+use axum::{
+    extract::FromRequestParts,
+    http::{StatusCode, request::Parts},
+};
 
 #[derive(Debug, Deserialize)]
 pub struct WebAppInitData {
@@ -10,9 +15,21 @@ pub struct WebAppInitData {
     pub data_check_string: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Eq, Hash)]
 pub struct WebAppUser {
     pub id: i64,
+}
+
+impl std::convert::From<i64> for WebAppUser {
+    fn from(id: i64) -> Self {
+        Self{ id }
+    }
+}
+
+impl std::cmp::PartialEq for WebAppUser {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
 }
 
 impl TryFrom<&str> for WebAppInitData {
@@ -73,5 +90,24 @@ impl WebAppInitData {
             return Err(anyhow!("WebAppInitData is not valid"));
         }
         Ok(())
+    }
+}
+
+#[axum::async_trait]
+impl<S> FromRequestParts<S> for WebAppUser
+where
+    S: Send + Sync,
+{
+    type Rejection = axum::http::StatusCode;
+
+    async fn from_request_parts(req: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        let sm = req.extensions
+            .get_mut::<SessionManager>()
+            .unwrap();
+        if sm.is_authorized_v2().await.map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)? {
+            Ok(sm.get_user_v2().await.map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?)
+        } else {
+            Err(StatusCode::UNAUTHORIZED)
+        }
     }
 }

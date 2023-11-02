@@ -1,4 +1,4 @@
-use crate::storage::Storage;
+use crate::{storage::Storage, sessions::WebAppUser};
 
 #[derive(Debug)]
 pub struct ImportanceChecker {
@@ -7,9 +7,9 @@ pub struct ImportanceChecker {
 }
 
 impl ImportanceChecker {
-    pub fn new(storage: &Storage, username: &String) -> ImportanceChecker {
-        let important_emails = storage.get_important_emails(username).unwrap_or(vec![]);
-        let tags = storage.get_important_tags(username).unwrap_or(vec![]);
+    pub async fn new(storage: &Storage, user: &WebAppUser) -> ImportanceChecker {
+        let important_emails = storage.get_important_emails(user).await.unwrap_or(vec![]);
+        let tags = storage.get_important_tags(user).await.unwrap_or(vec![]);
         ImportanceChecker {
             important_emails,
             tags,

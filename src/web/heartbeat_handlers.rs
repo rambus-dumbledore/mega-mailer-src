@@ -5,7 +5,7 @@ use common::storage::Storage;
 use common::types::Result;
 
 async fn heartbeat(Extension(storage): Extension<Arc<Storage>>) -> Result<impl IntoResponse> {
-    Ok(Json(storage.get_heartbeat()?))
+    Ok(Json(storage.get_heartbeat().await?))
 }
 
 pub fn heartbeat_handlers() -> Router {

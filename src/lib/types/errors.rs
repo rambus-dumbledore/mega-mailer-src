@@ -1,4 +1,4 @@
-use redis::{Connection, RedisError};
+use bb8_redis::redis::{Connection, RedisError};
 
 use rustls_connector;
 use serde_cbor;
@@ -71,6 +71,8 @@ pub enum Error {
     MailCheckerError(MailCheckerError),
     #[error("Internal error: {0}")]
     InternalError(InternalError),
+    #[error("Internal error: {0}")]
+    Anyhow(#[from] anyhow::Error),
 }
 
 use axum::{
@@ -134,7 +136,7 @@ impl std::convert::From<reqwest::Error> for Error {
     }
 }
 
-impl std::convert::From<std::sync::PoisonError<std::sync::RwLockWriteGuard<'_, redis::Connection>>>
+impl std::convert::From<std::sync::PoisonError<std::sync::RwLockWriteGuard<'_, bb8_redis::redis::Connection>>>
     for Error
 {
     fn from(e: std::sync::PoisonError<std::sync::RwLockWriteGuard<'_, Connection>>) -> Self {

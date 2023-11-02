@@ -1,12 +1,12 @@
 use serde::{Deserialize, Serialize};
 
-use crate::storage::CIPHER;
-
+use super::cipher::Cipher;
 #[derive(Serialize, Deserialize)]
 pub struct MailAccount {
     pub email: String,
     pub password: String,
 }
+
 
 #[derive(Serialize, Deserialize)]
 pub struct MailAccountEncrypted {
@@ -14,22 +14,19 @@ pub struct MailAccountEncrypted {
     pub password: Vec<u8>,
 }
 
-impl std::convert::From<MailAccount> for MailAccountEncrypted {
-    fn from(account: MailAccount) -> Self {
-        let enc_pwd = CIPHER.encrypt(account.password.as_bytes());
-        MailAccountEncrypted {
-            email: account.email,
-            password: enc_pwd,
-        }
+impl MailAccount {
+    pub fn encrypt(self, cipher: &Cipher) -> MailAccountEncrypted {
+        let password = cipher.encrypt(self.password.as_bytes());
+        MailAccountEncrypted { email: self.email, password }
     }
 }
 
-impl std::convert::From<MailAccountEncrypted> for MailAccount {
-    fn from(account: MailAccountEncrypted) -> Self {
-        let dec_pwd = CIPHER.decrypt(account.password.as_slice());
+impl MailAccountEncrypted {
+    pub fn decrypt(self, cipher: &Cipher) -> MailAccount {
+        let password = cipher.decrypt(self.password.as_slice());
         MailAccount {
-            email: account.email,
-            password: String::from_utf8(dec_pwd).unwrap(),
+            email: self.email,
+            password: String::from_utf8(password).unwrap(),
         }
     }
 }

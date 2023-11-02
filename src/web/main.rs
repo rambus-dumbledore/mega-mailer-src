@@ -5,17 +5,42 @@ mod importance_settings_handlers;
 mod notify_settings_handlers;
 mod server;
 
-use axum::Extension;
-use tracing::error;
 use std::sync::Arc;
+use axum::Extension;
+use anyhow::Result;
 use tower_cookies::CookieManagerLayer;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{fmt, prelude::*, registry::Registry};
 
-use common::sessions::SessionKeystore;
-use common::storage::Storage;
+use common::cfg::build_config;
+use common::storage::{Storage, Cipher};
 
 use server::init_server_instance;
+
+#[derive(rust_embed::RustEmbed)]
+#[folder = "src/db/"]
+struct SQLMigration;
+
+async fn main_impl() -> Result<()> {
+    let cfg = Arc::new(build_config()?);
+    let storage = Arc::new(Storage::new(&cfg).await?);
+    let cipher = Arc::new(Cipher::new(&cfg));
+
+    let sql = SQLMigration::get("pg_init.sql").expect("There is no pg migration file");
+    storage.migrate_pg(&std::str::from_utf8(sql.data.as_ref())?).await?;
+
+    let (router, address) = init_server_instance(&cfg).await;
+    let app = router
+        .layer(Extension(storage))
+        .layer(Extension(cipher))
+        .layer(Extension(cfg))
+        .layer(CookieManagerLayer::new());
+
+    axum::Server::bind(&address)
+        .serve(app.into_make_service())
+        .await?;
+    Ok(())
+}
 
 fn main() {
     let _guard = common::sentry::init_sentry();
@@ -31,26 +56,7 @@ fn main() {
         .unwrap();
 
     let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(async move {
-        let session_keystore = SessionKeystore::new();
-
-        let storage = Storage::new();
-        if let Err(err) = storage {
-            error!("Could not create connection to storage: {}", err);
-            return;
-        }
-        let storage = Arc::new(storage.unwrap());
-
-        let (router, address, port) = init_server_instance().await;
-        let app = router
-            .layer(Extension(storage))
-            .layer(Extension(session_keystore))
-            .layer(CookieManagerLayer::new());
-
-        let addr: std::net::SocketAddr = format!("{}:{}", address, port).parse().unwrap();
-        axum::Server::bind(&addr)
-            .serve(app.into_make_service())
-            .await
-            .unwrap();
-    })
+    if let Err(e) = rt.block_on(main_impl()) {
+        tracing::error!("Web finished with error: {}", e);
+    }
 }

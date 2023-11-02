@@ -1,6 +1,6 @@
 mod checker;
 
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use clokwerk::TimeUnits;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -12,27 +12,40 @@ use checker::Checker;
 use common::ctrlc_handler::set_ctrlc_handler;
 use common::heartbeat::HeartbeatService;
 use common::storage::Storage;
+use common::cfg::{build_config, Cfg};
 
-fn main_impl() -> anyhow::Result<()> {
+async fn main_impl() -> anyhow::Result<()> {
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
 
     set_ctrlc_handler(r)?;
+    let cfg = Arc::new(build_config()?);
 
-    let storage: Pin<Arc<Storage>> = Arc::pin(Storage::new()?);
+    let storage: Pin<Arc<Storage>> = Arc::pin(Storage::new(&cfg).await?);
 
     let heartbeat_service = HeartbeatService::new("MAIL_CHECKER".into(), storage);
     heartbeat_service.run();
 
-    let checker = Arc::pin(Checker::new()
-        .with_context(|| "Cound not create checker")?);
-
     tracing::info!("Started mail checker");
 
-    let mut scheduler = clokwerk::Scheduler::with_tz(chrono::FixedOffset::east(3 * 3600));
-    scheduler.every(1.minute()).run(move || {
-        checker.check_on_cron();
-    });
+    let moscow_offset = chrono::FixedOffset::east_opt(3 * 3600).ok_or(anyhow!("Could not create FixedOffset"))?;
+
+    let mut scheduler = clokwerk::AsyncScheduler::with_tz(moscow_offset);
+    
+    async fn task(cfg: Arc<Cfg>) {
+        let checker = Checker::new(&cfg).await
+            .with_context(|| "Cound not create checker");
+        let checker = match checker {
+            Ok(checker) => checker,
+            Err(e) => {
+                tracing::error!("{}", e);
+                return;
+            }
+        };
+        checker.check_on_cron().await;
+    }
+
+    scheduler.every(1.minute()).run(move || task(cfg.clone()));
 
     while running.load(Ordering::Relaxed) {
         scheduler.run_pending();
@@ -55,7 +68,8 @@ fn main() {
         .try_init()
         .unwrap();
 
-    if let Err(e) = main_impl() {
+    let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+    if let Err(e) = rt.block_on(main_impl()) {
         tracing::error!("MailChecker finished with error: {}", e)
     };
 }
