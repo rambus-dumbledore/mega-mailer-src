@@ -42,7 +42,6 @@ impl Cfg {
         let debug = cfg.get_bool("debug")?;
 
         let address: std::net::SocketAddr = cfg.get_string("web.address")?.parse()?;
-        println!("{:?}", address);
         let static_path: PathBuf = cfg.get_string("web.static_path")?.into();
         if !static_path.exists() {
             return Err(anyhow!("`web.static_path` value is not correct: {}", static_path.display()));

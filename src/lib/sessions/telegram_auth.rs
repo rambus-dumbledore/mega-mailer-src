@@ -101,9 +101,7 @@ where
     type Rejection = axum::http::StatusCode;
 
     async fn from_request_parts(req: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        let sm = req.extensions
-            .get_mut::<SessionManager>()
-            .unwrap();
+        let mut sm = SessionManager::from_request_parts(req, _state).await?;
         if sm.is_authorized_v2().await.map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)? {
             Ok(sm.get_user_v2().await.map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?)
         } else {

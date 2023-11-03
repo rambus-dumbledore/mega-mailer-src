@@ -6,18 +6,18 @@ create table if not exists "users" (
 );
 
 create table if not exists "mail_accounts" (
-	"id" bigint not null,
+	"id" bigint not null unique,
 	"username" text not null,
-	"password" text not null,
+	"password" bytea not null,
 	foreign key ("id") references "users" ( "id" )
 );
 
 create table if not exists "working_hours" (
-	"id" bigint not null,
+	"id" bigint not null unique,
 	"start" integer not null,
 	"end" integer not null,
-	check ("begin" >= 0 and "begin" < 24
+	check ("start" >= 0 and "start" < 24
 		   and "end" >= 0 and "end" < 24
-		   and "begin" < "end"),
+		   and "start" < "end"),
 	foreign key ("id") references "users" ( "id" )
 );

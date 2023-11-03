@@ -73,13 +73,9 @@ impl Storage {
         let encrypted_account = account.encrypt(cipher);
         let conn = self.pg.get().await?;
         let statement = conn.prepare(r#"
-            UPDATE "mail_accounts"
-            SET "username" = $1 AND "password" = $2
-            WHERE "id" = $3;
-
             INSERT INTO "mail_accounts" ("id", "username", "password")
             VALUES ($3, $1, $2)
-            WHERE NOT EXISTS (SELECT 1 FROM "mail_accounts" WHERE "id" = $3)
+            ON CONFLICT ("id") DO UPDATE SET "username" = $1, "password" = $2;
         "#).await?;
         conn.execute(&statement, &[&encrypted_account.email, &encrypted_account.password, &user.id]).await?;
         Ok(())
@@ -198,9 +194,9 @@ impl Storage {
     pub async fn get_user_working_hours(&self, user: &WebAppUser) -> Result<[u8; 2]> {
         let conn = self.pg.get().await?;
         let statement = conn.prepare(r#"
-             SELECT ("working_hours").begin, ("working_hours").end
-             FROM "users"
-             WHERE "id" = $3
+             SELECT "start", "end"
+             FROM "working_hours"
+             WHERE "id" = $1
         "#).await?;
         let row = conn.query_one(&statement, &[&user.id]).await?;
         let begin: i32 = row.get(0);
@@ -211,8 +207,8 @@ impl Storage {
     pub async fn set_user_working_hours(&self, user: &WebAppUser, wh: &[u8; 2]) -> Result<()> {
        let conn = self.pg.get().await?;
        let statement = conn.prepare(r#"
-            UPDATE "users"
-            SET "working_hours" = ($1, $2)
+            UPDATE "working_hours"
+            SET "start" = $1, "end" = $2
             WHERE "id" = $3
        "#).await?;
        conn.execute(&statement, &[&(wh[0] as i32), &(wh[1] as i32), &user.id]).await?;
@@ -286,8 +282,10 @@ impl Storage {
         let statement = conn.prepare(r#"
             INSERT INTO "users" ("id")
             VALUES ($1);
-
-            INSERT INTO "working_hours" ("id", "begin", "end")
+        "#).await?;
+        conn.execute(&statement, &[&user.id]).await?;
+        let statement = conn.prepare(r#"
+            INSERT INTO "working_hours" ("id", "start", "end")
             VALUES ($1, 10, 19);
         "#).await?;
         conn.execute(&statement, &[&user.id]).await?;
