@@ -4,9 +4,7 @@ storage:
   redis: '127.0.0.1:6379'
   key: ''
   iv: ''
-
-file_storage:
-  path: ''
+  postgres: 'postgres://user:password@postgres:5432/db'
 
 web:
   address: '127.0.0.1'

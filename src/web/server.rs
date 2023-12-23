@@ -13,8 +13,6 @@ use crate::notify_settings_handlers::notify_settings_routes;
 
 
 pub async fn init_server_instance(cfg: &Cfg) -> (axum::Router, std::net::SocketAddr) {
-    // let assets_service = get_service(
-    //     ServeDir::new(CONFIG.get::<String>("file_storage.path")));
     let static_service: MethodRouter = get_service(
         ServeDir::new(&cfg.web.static_path));
             
@@ -27,7 +25,6 @@ pub async fn init_server_instance(cfg: &Cfg) -> (axum::Router, std::net::SocketA
     let router = Router::new()
         .merge(auth_routes())
         .nest("/api", api_router)
-        // .route("/assets", assets_service)
         .fallback_service(static_service);
 
     (
