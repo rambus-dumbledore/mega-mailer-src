@@ -1,3 +1,0 @@
-FROM alpine
-COPY --from=builder /build/target/release/mail_checker /opt/mega-mailer/mail_checker
-COPY config.yaml /opt/mega-mailer

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::cipher::Cipher;
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct MailAccount {
     pub email: String,
     pub password: String,

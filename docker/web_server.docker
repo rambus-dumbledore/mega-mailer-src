@@ -1,3 +1,0 @@
-FROM alpine
-COPY --from=builder /build/target/release/web_server /opt/mega-mailer/web_server
-COPY config.yaml /opt/mega-mailer

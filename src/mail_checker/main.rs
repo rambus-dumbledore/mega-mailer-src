@@ -48,8 +48,8 @@ async fn main_impl() -> anyhow::Result<()> {
     scheduler.every(1.minute()).run(move || task(cfg.clone()));
 
     while running.load(Ordering::Relaxed) {
-        scheduler.run_pending();
-        std::thread::sleep(std::time::Duration::from_millis(500));
+        scheduler.run_pending().await;
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     }
 
     Ok(())
