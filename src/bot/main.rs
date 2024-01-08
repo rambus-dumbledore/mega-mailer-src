@@ -1,6 +1,8 @@
 mod bot;
 mod handlers;
+mod cfg;
 
+use cfg::TelegramBotCfg;
 use common::cfg::build_config;
 use tracing::error;
 use std::pin::Pin;
@@ -17,11 +19,11 @@ use common::types::*;
 async fn main_impl() -> Result<()> {
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
-    let cfg = build_config()?;
+    let cfg = build_config::<TelegramBotCfg>()?;
 
     set_ctrlc_handler(r)?;
 
-    let storage: Pin<Arc<Storage>> = Arc::pin(Storage::new(&cfg).await?);
+    let storage: Pin<Arc<Storage>> = Arc::pin(Storage::new(&cfg.storage).await?);
     let bot = Arc::new(bot::TelegramBot::new(storage.clone(), &cfg, running));
 
     let heartbeat_service = HeartbeatService::new("TELEGRAM_BOT".into(), storage.clone());

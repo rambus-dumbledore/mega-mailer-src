@@ -1,5 +1,4 @@
 use anyhow::Context;
-use common::cfg::Cfg;
 use tracing::{error, warn};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -13,6 +12,8 @@ use teloxide::{
 use common::storage::Storage;
 use common::types::Error;
 
+use crate::cfg::TelegramBotCfg;
+
 use super::handlers;
 use std::pin::Pin;
 
@@ -24,7 +25,7 @@ pub struct TelegramBot {
 }
 
 impl TelegramBot {
-    pub fn new(storage: Pin<Arc<Storage>>, cfg: &Cfg, running: Arc<AtomicBool>) -> TelegramBot {
+    pub fn new(storage: Pin<Arc<Storage>>, cfg: &TelegramBotCfg, running: Arc<AtomicBool>) -> TelegramBot {
         let token = cfg.bot.token.clone();
         let bot = Bot::new(token);
 

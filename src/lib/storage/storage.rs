@@ -4,7 +4,7 @@ use anyhow::Result;
 use std::collections::{BTreeMap, HashSet};
 use std::str::FromStr;
 
-use crate::cfg::Cfg;
+use crate::cfg::StorageCfg;
 use crate::sessions::WebAppUser;
 use crate::storage::mail_account::MailAccountEncrypted;
 use crate::storage::MailAccount;
@@ -22,10 +22,10 @@ pub struct Storage {
 }
 
 impl Storage {
-    pub async fn new(cfg: &Cfg) -> Result<Self> {
-        let pg_config = bb8_postgres::tokio_postgres::Config::from_str(&cfg.storage.postgres)?;
+    pub async fn new(cfg: &StorageCfg) -> Result<Self> {
+        let pg_config = bb8_postgres::tokio_postgres::Config::from_str(&cfg.postgres)?;
         let pg_man = bb8_postgres::PostgresConnectionManager::new(pg_config, bb8_postgres::tokio_postgres::NoTls);
-        let redis_man = bb8_redis::RedisConnectionManager::new(cfg.storage.redis.clone())?;
+        let redis_man = bb8_redis::RedisConnectionManager::new(cfg.redis.clone())?;
         let pg =  bb8::Pool::builder().build(pg_man).await?;
         let redis =  bb8::Pool::builder().build(redis_man).await?;
         Ok(Self{

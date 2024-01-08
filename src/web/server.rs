@@ -2,7 +2,7 @@ use axum::{
     routing::{get_service, MethodRouter},
     Router,
 };
-use common::cfg::Cfg;
+use common::cfg::WebCfg;
 use tower_http::services::ServeDir;
 
 use crate::account_handlers::account_routes;
@@ -12,9 +12,9 @@ use crate::importance_settings_handlers::importance_settings_routes;
 use crate::notify_settings_handlers::notify_settings_routes;
 
 
-pub async fn init_server_instance(cfg: &Cfg) -> (axum::Router, std::net::SocketAddr) {
+pub async fn init_server_instance(cfg: &WebCfg) -> (axum::Router, std::net::SocketAddr) {
     let static_service: MethodRouter = get_service(
-        ServeDir::new(&cfg.web.static_path));
+        ServeDir::new(&cfg.static_path));
             
     let api_router = Router::new()
         .merge(heartbeat_handlers())
@@ -29,6 +29,6 @@ pub async fn init_server_instance(cfg: &Cfg) -> (axum::Router, std::net::SocketA
 
     (
         router,
-        cfg.web.address.clone(),
+        cfg.address.clone(),
     )
 }

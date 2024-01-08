@@ -7,8 +7,10 @@ use axum::{
 };
 use serde::Deserialize;
 
-use common::{sessions::{SessionManager, WebAppInitData}, cfg::Cfg};
+use common::sessions::{SessionManager, WebAppInitData};
 use common::types::{Error, Result};
+
+use crate::cfg::WebServerCfg;
 
 
 async fn logout(mut sm: SessionManager) -> impl IntoResponse {
@@ -22,7 +24,7 @@ struct AuthParams {
 
 async fn auth(
     mut sm: SessionManager,
-    Extension(cfg): Extension<Arc<Cfg>>,
+    Extension(cfg): Extension<Arc<WebServerCfg>>,
     Json(params): Json<AuthParams>,
 ) -> Result<impl IntoResponse> {
     let init_data = WebAppInitData::try_from(params.init_data.as_str())

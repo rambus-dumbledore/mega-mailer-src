@@ -1,4 +1,5 @@
 mod checker;
+mod cfg;
 
 use anyhow::{anyhow, Context};
 use clokwerk::TimeUnits;
@@ -12,16 +13,18 @@ use checker::Checker;
 use common::ctrlc_handler::set_ctrlc_handler;
 use common::heartbeat::HeartbeatService;
 use common::storage::Storage;
-use common::cfg::{build_config, Cfg};
+use common::cfg::build_config;
+
+use crate::cfg::MailCheckerCfg;
 
 async fn main_impl() -> anyhow::Result<()> {
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
 
     set_ctrlc_handler(r)?;
-    let cfg = Arc::new(build_config()?);
+    let cfg = Arc::new(build_config::<MailCheckerCfg>()?);
 
-    let storage: Pin<Arc<Storage>> = Arc::pin(Storage::new(&cfg).await?);
+    let storage: Pin<Arc<Storage>> = Arc::pin(Storage::new(&cfg.storage).await?);
 
     let heartbeat_service = HeartbeatService::new("MAIL_CHECKER".into(), storage);
     heartbeat_service.run();
@@ -32,7 +35,7 @@ async fn main_impl() -> anyhow::Result<()> {
 
     let mut scheduler = clokwerk::AsyncScheduler::with_tz(moscow_offset);
     
-    async fn task(cfg: Arc<Cfg>) {
+    async fn task(cfg: Arc<MailCheckerCfg>) {
         let checker = Checker::new(&cfg).await
             .with_context(|| "Cound not create checker");
         let checker = match checker {

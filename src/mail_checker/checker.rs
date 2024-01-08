@@ -10,9 +10,10 @@ use teloxide::utils::markdown::escape;
 use anyhow::{Context, anyhow};
 use std::sync::Arc;
 
-use common::cfg::Cfg;
 use common::storage::{MailAccount, Storage, Cipher};
 use common::types::{Error, ImportanceChecker, MailCheckerError, Result, TelegramMessageTask};
+
+use crate::cfg::MailCheckerCfg;
 
 pub struct Checker {
     host: String,
@@ -22,12 +23,12 @@ pub struct Checker {
 }
 
 impl Checker {
-    pub async fn new(cfg: &Cfg) -> anyhow::Result<Checker> {
+    pub async fn new(cfg: &MailCheckerCfg) -> anyhow::Result<Checker> {
         let host = cfg.mail.address.clone();
         let port = cfg.mail.port;
-        let storage = Storage::new(cfg).await
+        let storage = Storage::new(&cfg.storage).await
             .with_context(|| "Could not connect to storage")?.into();
-        let cipher = Cipher::new(cfg);
+        let cipher = Cipher::new(&cfg.storage);
         Ok(Checker {
             host,
             port,

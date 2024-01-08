@@ -1,7 +1,7 @@
 use aes::cipher::KeyIvInit;
 use aes::cipher::{block_padding::Pkcs7, BlockDecryptMut, BlockEncryptMut};
 
-use crate::cfg::Cfg;
+use crate::cfg::StorageCfg;
 
 type Aes128CbcEnc = cbc::Encryptor<aes::Aes128>;
 type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
@@ -13,10 +13,10 @@ pub struct Cipher {
 }
 
 impl Cipher {
-    pub fn new(cfg: &Cfg) -> Self {
+    pub fn new(cfg: &StorageCfg) -> Self {
         Self{
-            key: cfg.storage.key.clone(),
-            iv: cfg.storage.iv.clone()
+            key: cfg.key.clone(),
+            iv: cfg.iv.clone()
         }
     }
 
