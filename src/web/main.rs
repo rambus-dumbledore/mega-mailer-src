@@ -38,8 +38,8 @@ async fn main_impl() -> Result<()> {
         .layer(Extension(cfg))
         .layer(CookieManagerLayer::new());
 
-    axum::Server::bind(&address)
-        .serve(app.into_make_service())
+    let listener = tokio::net::TcpListener::bind(address).await?;
+    axum::serve(listener, app.into_make_service())
         .await?;
     Ok(())
 }

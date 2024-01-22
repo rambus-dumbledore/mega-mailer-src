@@ -83,9 +83,9 @@ use axum::{
 
 impl IntoResponse for Error {
     fn into_response(self) -> axum::response::Response {
-        let body = body::boxed(body::Full::from(
-            json!({ "error": format!("{}", self) }).to_string(),
-        ));
+        let body = body::Body::from(
+            json!({ "error": format!("{}", self) }).to_string()
+        );
         Response::builder()
             .header(CONTENT_TYPE, "application/json")
             .status(StatusCode::INTERNAL_SERVER_ERROR)

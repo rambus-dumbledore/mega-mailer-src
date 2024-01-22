@@ -33,9 +33,9 @@ impl SessionManager {
         }
 
         self.cookies.add(
-            Cookie::build(COOKIE_NAME, cookie)
-                .same_site(SameSite::Lax)
-                .finish(),
+            Cookie::build((COOKIE_NAME, cookie))
+            .same_site(SameSite::Lax)
+            .build()
         );
 
         Ok(())
@@ -80,7 +80,7 @@ impl SessionManager {
             None => return
         };
         self.storage.remove_session_v2(cookie).await.ok();
-        self.cookies.remove(Cookie::named(COOKIE_NAME));
+        self.cookies.remove(Cookie::build(COOKIE_NAME).build());
     }
 }
 
