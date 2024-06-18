@@ -4,6 +4,7 @@ mod cfg;
 
 use cfg::TelegramBotCfg;
 use common::cfg::build_config;
+use common::queues::Queue;
 use tracing::error;
 use std::pin::Pin;
 use std::sync::atomic::AtomicBool;
@@ -24,7 +25,9 @@ async fn main_impl() -> Result<()> {
     set_ctrlc_handler(r)?;
 
     let storage: Pin<Arc<Storage>> = Arc::pin(Storage::new(&cfg.storage).await?);
-    let bot = Arc::new(bot::TelegramBot::new(storage.clone(), &cfg, running));
+    let queue = Queue::new(&cfg.rabbit).await?;
+    let tasks = Default::default();
+    let bot = Arc::new(bot::TelegramBot::new(storage.clone(), &cfg, queue, running, tasks));
 
     let heartbeat_service = HeartbeatService::new("TELEGRAM_BOT".into(), storage.clone());
     heartbeat_service.run();
@@ -41,7 +44,7 @@ fn main() {
 
     let fmt_layer = fmt::layer()
         .with_target(false)
-        .with_filter(LevelFilter::WARN);
+        .with_filter(LevelFilter::INFO);
 
     Registry::default()
         .with(sentry::integrations::tracing::layer())

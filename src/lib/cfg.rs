@@ -73,6 +73,24 @@ impl TryFrom<&Config> for MailCfg {
     }
 }
 
+#[derive(Clone)]
+pub struct RabbitmqCfg {
+    pub address: String,
+    pub port: u16,
+    pub queue: String,
+}
+
+impl TryFrom<&Config> for RabbitmqCfg {
+    type Error = anyhow::Error;
+    
+    fn try_from(cfg: &Config) -> std::result::Result<Self, Self::Error> {
+        let address = cfg.get_string("rabbitmq.address")?;
+        let port = cfg.get_int("rabbitmq.port")? as u16;
+        let queue = cfg.get_string("rabbitmq.queue")?;
+        Ok(RabbitmqCfg{ address, port, queue })
+    }
+}
+
 pub fn build_config<T: TryFrom<Config, Error = anyhow::Error>>() -> Result<T> {
     let cfg = Config::builder()
         .add_source(File::with_name("config"))

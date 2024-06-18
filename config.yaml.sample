@@ -19,3 +19,7 @@ mail:
   address: ''
   port: 993
 
+rabbitmq:
+  address: 'rabbitmq'
+  port: 5672
+

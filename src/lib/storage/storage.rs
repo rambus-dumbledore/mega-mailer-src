@@ -8,7 +8,6 @@ use crate::cfg::StorageCfg;
 use crate::sessions::WebAppUser;
 use crate::storage::mail_account::MailAccountEncrypted;
 use crate::storage::MailAccount;
-use crate::types::TelegramMessageTask;
 
 use super::cipher::Cipher;
 
@@ -169,27 +168,27 @@ impl Storage {
         Ok(users)
     }
 
-    pub async fn get_send_message_tasks_queue(&self) -> Result<BTreeMap<String, TelegramMessageTask>> {
-        let key = format!("TELEGRAM_MESSAGE_QUEUE");
-        let mut conn = self.redis.get().await?;
-        let tasks_queue = conn.hgetall(key).await?;
-        Ok(tasks_queue)
-    }
+    // pub async fn get_send_message_tasks_queue(&self) -> Result<BTreeMap<String, TelegramMessageTask>> {
+    //     let key = format!("TELEGRAM_MESSAGE_QUEUE");
+    //     let mut conn = self.redis.get().await?;
+    //     let tasks_queue = conn.hgetall(key).await?;
+    //     Ok(tasks_queue)
+    // }
 
-    pub async fn add_send_message_task_to_queue(&self, task: TelegramMessageTask) -> Result<bool> {
-        let key = format!("TELEGRAM_MESSAGE_QUEUE");
-        let field = uuid::Uuid::new_v4().to_string();
-        let mut conn = self.redis.get().await?;
-        let res = conn.hset(&key, &field, task).await?;
-        Ok(res)
-    }
+    // pub async fn add_send_message_task_to_queue(&self, task: TelegramMessageTask) -> Result<bool> {
+    //     let key = format!("TELEGRAM_MESSAGE_QUEUE");
+    //     let field = uuid::Uuid::new_v4().to_string();
+    //     let mut conn = self.redis.get().await?;
+    //     let res = conn.hset(&key, &field, task).await?;
+    //     Ok(res)
+    // }
 
-    pub async fn remove_send_message_task_from_queue(&self, id: &String) -> Result<bool> {
-        let key = format!("TELEGRAM_MESSAGE_QUEUE");
-        let mut conn = self.redis.get().await?;
-        let res = conn.hdel(&key, id).await?;
-        Ok(res)
-    }
+    // pub async fn remove_send_message_task_from_queue(&self, id: &String) -> Result<bool> {
+    //     let key = format!("TELEGRAM_MESSAGE_QUEUE");
+    //     let mut conn = self.redis.get().await?;
+    //     let res = conn.hdel(&key, id).await?;
+    //     Ok(res)
+    // }
 
     pub async fn get_user_working_hours(&self, user: &WebAppUser) -> Result<[u8; 2]> {
         let conn = self.pg.get().await?;

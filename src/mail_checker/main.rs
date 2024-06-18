@@ -3,6 +3,7 @@ mod cfg;
 
 use anyhow::{anyhow, Context};
 use clokwerk::TimeUnits;
+use common::queues::Queue;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -26,6 +27,8 @@ async fn main_impl() -> anyhow::Result<()> {
 
     let storage: Pin<Arc<Storage>> = Arc::pin(Storage::new(&cfg.storage).await?);
 
+    let queue = Queue::new(&cfg.rabbit).await?;
+
     let heartbeat_service = HeartbeatService::new("MAIL_CHECKER".into(), storage);
     heartbeat_service.run();
 
@@ -35,8 +38,8 @@ async fn main_impl() -> anyhow::Result<()> {
 
     let mut scheduler = clokwerk::AsyncScheduler::with_tz(moscow_offset);
     
-    async fn task(cfg: Arc<MailCheckerCfg>) {
-        let checker = Checker::new(&cfg).await
+    async fn task(cfg: Arc<MailCheckerCfg>, queue: Queue) {
+        let checker = Checker::new(&cfg, queue.clone()).await
             .with_context(|| "Cound not create checker");
         let checker = match checker {
             Ok(checker) => checker,
@@ -48,7 +51,7 @@ async fn main_impl() -> anyhow::Result<()> {
         checker.check_on_cron().await;
     }
 
-    scheduler.every(1.minute()).run(move || task(cfg.clone()));
+    scheduler.every(1.minute()).run(move || task(cfg.clone(), queue.clone()));
 
     while running.load(Ordering::Relaxed) {
         scheduler.run_pending().await;
@@ -63,7 +66,7 @@ fn main() {
 
     let fmt_layer = fmt::layer()
         .with_target(false)
-        .with_filter(LevelFilter::WARN);
+        .with_filter(LevelFilter::INFO);
 
     Registry::default()
         .with(sentry::integrations::tracing::layer())

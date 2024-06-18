@@ -23,3 +23,12 @@ services:
       - '5436:5432'
     # volumes:
     #   - .volumes/pg:/var/lib/postgresql/data
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    restart: unless-stopped
+    ports:
+      - '5672:5672'
+      - '8080:15672'
+    # volumes:
+    #   - ''

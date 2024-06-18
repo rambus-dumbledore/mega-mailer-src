@@ -11,7 +11,8 @@ use anyhow::{Context, anyhow};
 use std::sync::Arc;
 
 use common::storage::{MailAccount, Storage, Cipher};
-use common::types::{Error, ImportanceChecker, MailCheckerError, Result, TelegramMessageTask};
+use common::types::{Error, ImportanceChecker, MailCheckerError, Result};
+use common::queues::{Queue, QueueMessage, Tasks, TelegramMessageTask};
 
 use crate::cfg::MailCheckerCfg;
 
@@ -19,11 +20,12 @@ pub struct Checker {
     host: String,
     port: u16,
     storage: Arc<Storage>,
-    cipher: Cipher
+    cipher: Cipher,
+    queue: Queue,
 }
 
 impl Checker {
-    pub async fn new(cfg: &MailCheckerCfg) -> anyhow::Result<Checker> {
+    pub async fn new(cfg: &MailCheckerCfg, queue: Queue) -> anyhow::Result<Checker> {
         let host = cfg.mail.address.clone();
         let port = cfg.mail.port;
         let storage = Storage::new(&cfg.storage).await
@@ -34,6 +36,7 @@ impl Checker {
             port,
             storage,
             cipher,
+            queue
         })
     }
 
@@ -144,7 +147,8 @@ impl Checker {
             important: importance_checker.check(&email, &subject),
         };
 
-        if let Err(e) = self.storage.add_send_message_task_to_queue(task).await {
+        let msg = QueueMessage::Tasks(Tasks::TelegramMessageTask(task));
+        if let Err(e) = self.queue.publish("telegram_message_task", msg).await {
             return Err(anyhow!(e));
         }
 
