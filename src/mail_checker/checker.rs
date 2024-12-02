@@ -1,18 +1,19 @@
+use anyhow::{anyhow, Context};
 use chrono::Timelike;
+use common::cfg::BrokerCfg;
 use common::sessions::WebAppUser;
 use imap;
 use rustls_connector::{RustlsConnector, TlsStream};
 use rustyknife::rfc2047::encoded_word;
-use teloxide_core::types::UserId;
 use std::iter::FromIterator;
 use std::net::TcpStream;
-use teloxide::utils::markdown::escape;
-use anyhow::{Context, anyhow};
 use std::sync::Arc;
+use teloxide::utils::markdown::escape;
+use teloxide_core::types::UserId;
 
-use common::storage::{MailAccount, Storage, Cipher};
+use common::queues::{BrokerClient, Tasks, TelegramMessageTask};
+use common::storage::{Cipher, MailAccount, Storage};
 use common::types::{Error, ImportanceChecker, MailCheckerError, Result};
-use common::queues::{Queue, QueueMessage, Tasks, TelegramMessageTask};
 
 use crate::cfg::MailCheckerCfg;
 
@@ -21,22 +22,24 @@ pub struct Checker {
     port: u16,
     storage: Arc<Storage>,
     cipher: Cipher,
-    queue: Queue,
+    broker_cfg: BrokerCfg,
 }
 
 impl Checker {
-    pub async fn new(cfg: &MailCheckerCfg, queue: Queue) -> anyhow::Result<Checker> {
+    pub async fn new(cfg: &MailCheckerCfg) -> anyhow::Result<Checker> {
         let host = cfg.mail.address.clone();
         let port = cfg.mail.port;
-        let storage = Storage::new(&cfg.storage).await
-            .with_context(|| "Could not connect to storage")?.into();
+        let storage = Storage::new(&cfg.storage)
+            .await
+            .with_context(|| "Could not connect to storage")?
+            .into();
         let cipher = Cipher::new(&cfg.storage);
         Ok(Checker {
             host,
             port,
             storage,
             cipher,
-            queue
+            broker_cfg: cfg.broker.clone(),
         })
     }
 
@@ -112,33 +115,44 @@ impl Checker {
         let work_hours = self.storage.get_user_working_hours(&user).await?;
 
         let moscow_offset = chrono::FixedOffset::east_opt(3 * 3600)
-                .ok_or(anyhow!("Could not create Moscow offset"))?;
+            .ok_or(anyhow!("Could not create Moscow offset"))?;
 
         let now = chrono::Utc::now().with_timezone(&moscow_offset);
 
         let from = now
-            .with_hour(work_hours[0] as u32).unwrap_or(now)
-            .with_minute(0).unwrap()
-            .with_second(0).unwrap();
+            .with_hour(work_hours[0] as u32)
+            .unwrap_or(now)
+            .with_minute(0)
+            .unwrap()
+            .with_second(0)
+            .unwrap();
         let to = now
-            .with_hour(work_hours[1] as u32).unwrap_or(now)
-            .with_minute(0).unwrap()
-            .with_second(0).unwrap();
+            .with_hour(work_hours[1] as u32)
+            .unwrap_or(now)
+            .with_minute(0)
+            .unwrap()
+            .with_second(0)
+            .unwrap();
 
         let mut send_after = chrono::Utc::now();
-        let utc_offset = chrono::Utc{};
+        let utc_offset = chrono::Utc {};
 
         if from <= now && now <= to {
             send_after = now.with_timezone(&utc_offset)
         } else if to < now {
-            send_after = from.checked_add_days(chrono::Days::new(1))
+            send_after = from
+                .checked_add_days(chrono::Days::new(1))
                 .ok_or(anyhow!("Could not add day to `from` value"))?
                 .with_timezone(&utc_offset)
         } else if now < from {
             send_after = from.with_timezone(&utc_offset)
         }
 
-        tracing::warn!("Now: {}, Calculated send_after: {}", now, send_after.with_timezone(&moscow_offset));
+        tracing::warn!(
+            "Now: {}, Calculated send_after: {}",
+            now,
+            send_after.with_timezone(&moscow_offset)
+        );
 
         let task = TelegramMessageTask {
             to: UserId(user.id as u64),
@@ -147,15 +161,19 @@ impl Checker {
             important: importance_checker.check(&email, &subject),
         };
 
-        let msg = QueueMessage::Tasks(Tasks::TelegramMessageTask(task));
-        if let Err(e) = self.queue.publish("telegram_message_task", msg).await {
+        let payload = common::queues::BrokerRequestPayload::Tasks(Tasks::TelegramMessageTask(task));
+        let broker = BrokerClient::new(self.broker_cfg.clone())?;
+        if let Err(e) = broker.send(payload).await {
             return Err(anyhow!(e));
         }
-
         Ok(())
     }
 
-    async fn process_account(&self, user: &WebAppUser, account: &MailAccount) -> anyhow::Result<()> {
+    async fn process_account(
+        &self,
+        user: &WebAppUser,
+        account: &MailAccount,
+    ) -> anyhow::Result<()> {
         let MailAccount { email, password } = account;
         let client = match self.build_client() {
             Ok(client) => client,
@@ -174,7 +192,8 @@ impl Checker {
         let importance_checker = ImportanceChecker::new(&*self.storage, user).await;
         tracing::debug!(
             "ImportanceChecker for user {} was built: {:?}",
-            user.id, importance_checker
+            user.id,
+            importance_checker
         );
 
         let folders = session.list(None, Some("INBOX*"))?;
@@ -189,7 +208,8 @@ impl Checker {
             let available_uids = Vec::from_iter(unseen.iter());
             let to_fetch_uids = self
                 .storage
-                .filter_unprocessed(user, available_uids.as_slice()).await?;
+                .filter_unprocessed(user, available_uids.as_slice())
+                .await?;
 
             let to_fetch = format!(
                 "{}",
@@ -199,11 +219,13 @@ impl Checker {
 
             let fetched = session.fetch(to_fetch, "ENVELOPE")?;
             for message in fetched.iter() {
-                self.process_message(message, user, &importance_checker).await?;
+                self.process_message(message, user, &importance_checker)
+                    .await?;
             }
 
             self.storage
-                .add_processed_mails(user, to_fetch_uids.as_slice()).await?
+                .add_processed_mails(user, to_fetch_uids.as_slice())
+                .await?
         }
 
         session.logout()?;
@@ -226,7 +248,10 @@ impl Checker {
 
                 if account.is_none() {
                     tracing::error!("There is no valid mail account for user {}", user.id);
-                    if let Err(e) = self.storage.disable_checking(user).await
+                    if let Err(e) = self
+                        .storage
+                        .disable_checking(user)
+                        .await
                         .with_context(|| "Failed to disable checking")
                     {
                         tracing::error!("{}", e);

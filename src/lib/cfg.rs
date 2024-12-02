@@ -1,6 +1,6 @@
-use std::path::PathBuf;
 use anyhow::{anyhow, Result};
 use config::{Config, Environment, File};
+use std::path::PathBuf;
 
 #[derive(Clone)]
 pub struct WebCfg {
@@ -16,10 +16,17 @@ impl TryFrom<&Config> for WebCfg {
         let address: std::net::SocketAddr = cfg.get_string("web.address")?.parse()?;
         let static_path: PathBuf = cfg.get_string("web.static_path")?.into();
         if !static_path.exists() {
-            return Err(anyhow!("`web.static_path` value is not correct: {}", static_path.display()));
+            return Err(anyhow!(
+                "`web.static_path` value is not correct: {}",
+                static_path.display()
+            ));
         }
         let cookie_key = cfg.get_string("web.cookie_key")?;
-        Ok(WebCfg{ address, static_path, cookie_key })
+        Ok(WebCfg {
+            address,
+            static_path,
+            cookie_key,
+        })
     }
 }
 
@@ -39,7 +46,12 @@ impl TryFrom<&Config> for StorageCfg {
         let postgres = cfg.get_string("storage.postgres")?;
         let key = cfg.get_string("storage.key")?;
         let iv = cfg.get_string("storage.iv")?;
-        Ok(StorageCfg{ redis, postgres, key, iv })
+        Ok(StorageCfg {
+            redis,
+            postgres,
+            key,
+            iv,
+        })
     }
 }
 
@@ -53,7 +65,7 @@ impl TryFrom<&Config> for BotCfg {
 
     fn try_from(cfg: &Config) -> std::result::Result<Self, Self::Error> {
         let token = cfg.get_string("bot.secret")?;
-        Ok(BotCfg{ token })
+        Ok(BotCfg { token })
     }
 }
 
@@ -69,25 +81,29 @@ impl TryFrom<&Config> for MailCfg {
     fn try_from(cfg: &Config) -> std::result::Result<Self, Self::Error> {
         let address = cfg.get_string("mail.address")?;
         let port: u16 = cfg.get_int("mail.port")? as u16;
-        Ok(MailCfg{ address, port })
+        Ok(MailCfg { address, port })
     }
 }
 
 #[derive(Clone)]
-pub struct RabbitmqCfg {
+pub struct BrokerCfg {
     pub address: String,
-    pub port: u16,
-    pub queue: String,
+    pub pub_port: u16,
+    pub rep_port: u16,
 }
 
-impl TryFrom<&Config> for RabbitmqCfg {
+impl TryFrom<&Config> for BrokerCfg {
     type Error = anyhow::Error;
-    
+
     fn try_from(cfg: &Config) -> std::result::Result<Self, Self::Error> {
-        let address = cfg.get_string("rabbitmq.address")?;
-        let port = cfg.get_int("rabbitmq.port")? as u16;
-        let queue = cfg.get_string("rabbitmq.queue")?;
-        Ok(RabbitmqCfg{ address, port, queue })
+        let address = cfg.get_string("broker.address")?;
+        let pub_port = cfg.get_int("broker.pub_port")? as u16;
+        let rep_port = cfg.get_int("broker.rep_port")? as u16;
+        Ok(BrokerCfg {
+            address,
+            pub_port,
+            rep_port,
+        })
     }
 }
 

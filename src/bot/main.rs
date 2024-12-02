@@ -1,14 +1,14 @@
 mod bot;
-mod handlers;
 mod cfg;
+mod handlers;
 
 use cfg::TelegramBotCfg;
 use common::cfg::build_config;
-use common::queues::Queue;
-use tracing::error;
+use common::queues::BrokerClient;
 use std::pin::Pin;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use tracing::error;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{fmt, prelude::*, registry::Registry};
 
@@ -25,9 +25,15 @@ async fn main_impl() -> Result<()> {
     set_ctrlc_handler(r)?;
 
     let storage: Pin<Arc<Storage>> = Arc::pin(Storage::new(&cfg.storage).await?);
-    let queue = Queue::new(&cfg.rabbit).await?;
+    let broker_client = BrokerClient::new(cfg.broker.clone())?;
     let tasks = Default::default();
-    let bot = Arc::new(bot::TelegramBot::new(storage.clone(), &cfg, queue, running, tasks));
+    let bot = Arc::new(bot::TelegramBot::new(
+        storage.clone(),
+        &cfg,
+        broker_client,
+        running,
+        tasks,
+    ));
 
     let heartbeat_service = HeartbeatService::new("TELEGRAM_BOT".into(), storage.clone());
     heartbeat_service.run();

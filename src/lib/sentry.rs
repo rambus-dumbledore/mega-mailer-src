@@ -4,7 +4,7 @@ pub fn init_sentry() -> sentry::ClientInitGuard {
     options.attach_stacktrace = true;
 
     let guard = sentry::init((
-        "https://a618f8bb37c44dd7a8c3a17963aa28fb@o1006895.ingest.sentry.io/6001259",
+        "https://fd712925b5fc9c2bc1ac4edf3d1c0b82@sentry.wposek.ru/5",
         options,
     ));
 

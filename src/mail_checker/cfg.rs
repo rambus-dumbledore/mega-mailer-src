@@ -1,13 +1,11 @@
 use common::cfg::*;
 use config::Config;
 
-
 #[derive(Clone)]
 pub struct MailCheckerCfg {
     pub storage: StorageCfg,
-    pub bot: BotCfg,
     pub mail: MailCfg,
-    pub rabbit: RabbitmqCfg,
+    pub broker: BrokerCfg,
 }
 
 impl TryFrom<Config> for MailCheckerCfg {
@@ -15,9 +13,12 @@ impl TryFrom<Config> for MailCheckerCfg {
 
     fn try_from(cfg: Config) -> std::result::Result<Self, Self::Error> {
         let storage = StorageCfg::try_from(&cfg)?;
-        let bot = BotCfg::try_from(&cfg)?;        
         let mail = MailCfg::try_from(&cfg)?;
-        let rabbit = RabbitmqCfg::try_from(&cfg)?;
-        Ok(MailCheckerCfg{ storage, bot, mail, rabbit })
+        let broker = BrokerCfg::try_from(&cfg)?;
+        Ok(MailCheckerCfg {
+            storage,
+            mail,
+            broker,
+        })
     }
 }

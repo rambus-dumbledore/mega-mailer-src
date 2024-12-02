@@ -1,5 +1,4 @@
-use common::queues::{Queue, TelegramMessageTask};
-use tokio::select;
+use common::queues::{BrokerClient, TelegramMessageTask};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -10,8 +9,8 @@ use teloxide::{
     types::{KeyboardButton, KeyboardMarkup, Message},
 };
 use tokio::sync::RwLock;
-use tracing::{error, warn};
 
+use common::retry;
 use common::storage::Storage;
 use common::types::Error;
 
@@ -25,17 +24,17 @@ pub struct TelegramBot {
     bot: Bot,
     storage: Pin<Arc<Storage>>,
     running: Arc<AtomicBool>,
-    queue: Queue,
-    tasks: Arc<RwLock<HashMap<u64, (TelegramMessageTask, u16)>>>
+    broker: BrokerClient,
+    tasks: Arc<RwLock<HashMap<uuid::Uuid, TelegramMessageTask>>>,
 }
 
 impl TelegramBot {
     pub fn new(
         storage: Pin<Arc<Storage>>,
         cfg: &TelegramBotCfg,
-        queue: Queue,
+        broker: BrokerClient,
         running: Arc<AtomicBool>,
-        tasks: Arc<RwLock<HashMap<u64, (TelegramMessageTask, u16)>>>
+        tasks: Arc<RwLock<HashMap<uuid::Uuid, TelegramMessageTask>>>,
     ) -> TelegramBot {
         let token = cfg.bot.token.clone();
         let bot = Bot::new(token);
@@ -44,7 +43,7 @@ impl TelegramBot {
             bot,
             storage,
             running,
-            queue,
+            broker,
             tasks,
         }
     }
@@ -52,10 +51,10 @@ impl TelegramBot {
     async fn fetch_all_endpoint(
         bot: Bot,
         msg: Message,
-        queue: Queue,
-        tasks: Arc<RwLock<HashMap<u64, (TelegramMessageTask, u16)>>>
+        broker_client: BrokerClient,
+        tasks: Arc<RwLock<HashMap<uuid::Uuid, TelegramMessageTask>>>,
     ) -> Result<(), Error> {
-        handlers::process_fetch_all_emails(bot, msg, queue, tasks).await?;
+        handlers::process_fetch_all_emails(bot, msg, broker_client, tasks).await?;
         Ok(())
     }
 
@@ -68,13 +67,13 @@ impl TelegramBot {
         let storage = self.storage.clone();
         let bot_name = String::from("");
         let bot = self.bot.clone();
-        let queue = self.queue.clone();
+        let broker = self.broker.clone();
         let tasks = self.tasks.clone();
 
         Dispatcher::builder(bot, messages_handler)
-            .dependencies(dptree::deps![storage, queue, tasks, bot_name])
+            .dependencies(dptree::deps![storage, broker, tasks, bot_name])
             .default_handler(|upd| async move {
-                warn!("Unhandled update: {:?}", upd);
+                tracing::warn!("Unhandled update: {:?}", upd);
             })
             // If the dispatcher fails for some reason, execute this handler.
             .error_handler(LoggingErrorHandler::with_custom_text(
@@ -88,30 +87,28 @@ impl TelegramBot {
 
     pub async fn start_message_queue_listener_thread(&self) {
         let tm = self.tasks.clone();
-        let queue = self.queue.clone();
+        let broker = self.broker.clone();
         tokio::spawn(async move {
             loop {
-                let (mut rx, mut thread) = if let Ok((rx, thread)) = queue.subscribe("telegram_bot".into()).await {
-                    (rx, thread)
-                } else {
-                    return;
+                let mut rx = match broker.subscribe().await {
+                    Ok(rx) => rx,
+                    Err(_) => return,
                 };
+                tracing::info!("subscribed");
 
                 loop {
-                    select! {
-                        Some((msg, delivery_tag, channel_id)) = rx.recv() => {
-                            match msg {
-                                common::queues::QueueMessage::Tasks(tasks) => match tasks {
-                                    common::queues::Tasks::TelegramMessageTask(task) => {
-                                        tm.write().await.insert(delivery_tag, (task, channel_id));
-                                    }
-                                },
-                            }
+                    let msg = rx.recv().await;
+                    tracing::info!("recieved {:?}", msg);
+                    match msg {
+                        Some(msg) => match msg.payload {
+                            common::queues::BrokerMessagePayload::Tasks(t) => match t {
+                                common::queues::Tasks::TelegramMessageTask(task) => {
+                                    tm.write().await.insert(msg.message_id, task);
+                                }
+                            },
                         },
-                        result = &mut thread => {
-                            if let Err(e) = result {
-                                tracing::error!("Consumer thread finished with error: {}, restarting thread...", e);
-                            }
+
+                        _ => {
                             break;
                         }
                     }
@@ -121,30 +118,34 @@ impl TelegramBot {
 
         loop {
             let mut to_remove = Vec::new();
-            
+
             {
                 let lock = self.tasks.read().await;
-                let tasks: Vec<(u64, TelegramMessageTask, u16)> = lock.iter()
-                    .map(|(delivery_tag, (task, channel_id))| (*delivery_tag, task.clone(), *channel_id))
+                let tasks: Vec<(uuid::Uuid, TelegramMessageTask)> = lock
+                    .iter()
+                    .map(|(msg_id, task)| (*msg_id, task.clone()))
                     .collect();
-                for (delivery_tag, task, channel_id) in tasks {
-
+                for (msg_id, task) in tasks {
                     if !task.important && !task.can_send_now() {
                         continue;
                     }
-    
+
                     match TelegramBot::send_markdown(&self.bot, task.to, &task.text).await {
                         Err(e) => {
-                            error!("{}", e);
+                            tracing::error!("{}", e);
                         }
                         Ok(_) => {
-                            match self.queue.ack(delivery_tag, channel_id).await {
+                            match retry! { self.broker.ack(msg_id).await } {
                                 Err(e) => {
-                                    error!("{}", e);
+                                    tracing::error!(
+                                        "Failed to ack message with id {}: {}",
+                                        msg_id,
+                                        e
+                                    );
                                 }
                                 _ => {}
                             };
-                            to_remove.push(delivery_tag);
+                            to_remove.push(msg_id);
                         }
                     };
                 }

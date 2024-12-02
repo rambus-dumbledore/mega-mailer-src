@@ -19,7 +19,7 @@ mail:
   address: ''
   port: 993
 
-rabbitmq:
-  address: 'rabbitmq'
-  port: 5672
-
+broker:
+  address: '127.0.0.1'
+  rep_port: 5555
+  pub_port: 5556
