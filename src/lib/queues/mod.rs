@@ -81,11 +81,20 @@ impl BrokerClient {
         tracing::info!("send {}", String::from_utf8_lossy(&data));
 
         async fn send_impl(data: Vec<u8>, cfg: BrokerCfg) -> Result<()> {
-            let requestor = async_zmq::request(&format!("tcp://{}:{}", cfg.address, cfg.rep_port))?
-                .connect()?;
-            requestor.send(data).await?;
-            let _ = requestor.recv().await?;
-            Ok(())
+            let handle = tokio::runtime::Handle::current();
+            handle.block_on(async move {
+                let local = tokio::task::LocalSet::new();
+                let handle = local.spawn_local(async move {
+                    let requestor =
+                        async_zmq::request(&format!("tcp://{}:{}", cfg.address, cfg.rep_port))?
+                            .connect()?;
+                    requestor.send(data).await?;
+                    let _ = requestor.recv().await?;
+
+                    Ok::<(), anyhow::Error>(())
+                });
+                local.run_until(handle).await?
+            })
         }
 
         retry! { send_impl(data.clone(), self.cfg.clone()).await }?;

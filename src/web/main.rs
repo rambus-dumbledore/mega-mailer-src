@@ -1,21 +1,22 @@
 mod account_handlers;
 mod auth_handlers;
+mod cfg;
+mod healthcheck_handlers;
 mod heartbeat_handlers;
 mod importance_settings_handlers;
 mod notify_settings_handlers;
 mod server;
-mod cfg;
 
-use std::sync::Arc;
-use axum::Extension;
 use anyhow::Result;
+use axum::Extension;
 use cfg::WebServerCfg;
+use std::sync::Arc;
 use tower_cookies::CookieManagerLayer;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{fmt, prelude::*, registry::Registry};
 
 use common::cfg::build_config;
-use common::storage::{Storage, Cipher};
+use common::storage::{Cipher, Storage};
 
 use server::init_server_instance;
 
@@ -29,7 +30,9 @@ async fn main_impl() -> Result<()> {
     let cipher = Arc::new(Cipher::new(&cfg.storage));
 
     let sql = SQLMigration::get("pg_init.sql").expect("There is no pg migration file");
-    storage.migrate_pg(&std::str::from_utf8(sql.data.as_ref())?).await?;
+    storage
+        .migrate_pg(&std::str::from_utf8(sql.data.as_ref())?)
+        .await?;
 
     let (router, address) = init_server_instance(&cfg.web).await;
     let app = router
@@ -39,8 +42,7 @@ async fn main_impl() -> Result<()> {
         .layer(CookieManagerLayer::new());
 
     let listener = tokio::net::TcpListener::bind(address).await?;
-    axum::serve(listener, app.into_make_service())
-        .await?;
+    axum::serve(listener, app.into_make_service()).await?;
     Ok(())
 }
 

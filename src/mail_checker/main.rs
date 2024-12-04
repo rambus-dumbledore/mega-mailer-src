@@ -72,21 +72,17 @@ async fn main_impl() -> anyhow::Result<()> {
         }
     }
 
-    let ls = tokio::task::LocalSet::new();
-    let handle = ls.spawn_local(receive_task(rx, running.clone(), cfg.clone()));
+    let handle = tokio::spawn(receive_task(rx, running.clone(), cfg.clone()));
 
     let tx = tx.clone();
     scheduler
         .every(1.minute())
         .run(move || emit_task(tx.clone()));
 
-    ls.run_until(async move {
-        while running.load(Ordering::Relaxed) {
-            scheduler.run_pending().await;
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        }
-    })
-    .await;
+    while running.load(Ordering::Relaxed) {
+        scheduler.run_pending().await;
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
 
     let _ = handle.await;
 
