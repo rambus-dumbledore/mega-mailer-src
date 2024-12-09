@@ -171,7 +171,7 @@ impl TelegramBot {
             text: "Fetch all emails".into(),
             request: None,
         }]])
-        .resize_keyboard(true);
+        .resize_keyboard();
         let chat_id: ChatId = user_id.into();
         bot.send_message(chat_id, text)
             .parse_mode(MarkdownV2)
